@@ -43,7 +43,10 @@ param ollamaImage string = 'docker.io/ollama/ollama:0.3.14'
 param ollamaModel string = 'llama3.1'
 
 @description('Serverless GPU workload profile type for the Ollama route when ollamaUseGpu is true. Requires GPU quota in the target region.')
-param ollamaWorkloadProfileType string = 'Consumption-GPU-NC8as-T4'
+param ollamaGpuWorkloadProfileType string = 'Consumption-GPU-NC8as-T4'
+
+@description('Workload profile type for the Ollama route when ollamaUseGpu is false. Defaults to the serverless "Consumption" profile (CPU, scale-to-zero, no GPU quota, max 4 vCPU / 8Gi). Set a dedicated type such as "D4" for more capacity, which bills for reserved nodes.')
+param ollamaCpuWorkloadProfileType string = 'Consumption'
 
 @description('vCPU allocated to the Ollama container on the GPU profile (must fit the chosen GPU profile).')
 param ollamaGpuCpu int = 8
@@ -115,6 +118,18 @@ var ollamaShareName = 'ollama-models'
 var archiveContainerName = 'compliance-archive'
 var consumptionProfileName = 'Consumption'
 var gpuProfileName = 'gpu'
+var cpuProfileName = 'ollama-cpu'
+// ollamaUseGpu selects the GPU or CPU profile type; the CPU 'Consumption' default reuses the shared serverless profile so no extra profile is added.
+var ollamaProfileType = ollamaUseGpu ? ollamaGpuWorkloadProfileType : ollamaCpuWorkloadProfileType
+var ollamaProfileName = ollamaProfileType == consumptionProfileName ? consumptionProfileName : (ollamaUseGpu ? gpuProfileName : cpuProfileName)
+var ollamaExtraProfiles = ollamaProfileType == consumptionProfileName ? [] : [
+  {
+    name: ollamaProfileName
+    workloadProfileType: ollamaProfileType
+    minimumCount: 0
+    maximumCount: 1
+  }
+]
 var azureAccountName = take(toLower(replace('${namePrefix}aoai${suffix}', '-', '')), 63)
 
 // -------------------------------------------------------------------------------------------------
@@ -354,14 +369,7 @@ module environment 'br/public:avm/res/app/managed-environment:0.16.0' = {
           workloadProfileType: 'Consumption'
         }
       ],
-      ollamaUseGpu ? [
-        {
-          name: gpuProfileName
-          workloadProfileType: ollamaWorkloadProfileType
-          minimumCount: 0
-          maximumCount: 1
-        }
-      ] : []
+      ollamaExtraProfiles
     )
     storages: [
       {
@@ -390,7 +398,7 @@ module ollamaApp 'br/public:avm/res/app/container-app:0.23.0' = {
     location: location
     tags: tags
     environmentResourceId: environment.outputs.resourceId
-    workloadProfileName: ollamaUseGpu ? gpuProfileName : consumptionProfileName
+    workloadProfileName: ollamaProfileName
     activeRevisionsMode: 'Single'
     ingressExternal: false
     ingressTargetPort: 11434

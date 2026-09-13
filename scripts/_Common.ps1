@@ -75,7 +75,8 @@ function Get-PdaConfig {
         ImageTag            = Get-OptionalEnv 'PDA_IMAGE_TAG' (Get-OptionalEnv 'GITHUB_SHA' 'local')
         OllamaUseGpu        = Get-OptionalEnv 'PDA_OLLAMA_USE_GPU' 'false'
         OllamaModel         = Get-OptionalEnv 'PDA_OLLAMA_MODEL' 'llama3.1'
-        OllamaProfileType   = Get-OptionalEnv 'PDA_OLLAMA_PROFILE' 'Consumption-GPU-NC8as-T4'
+        OllamaGpuProfileType = Get-OptionalEnv 'PDA_OLLAMA_GPU_PROFILE' 'Consumption-GPU-NC8as-T4'
+        OllamaCpuProfileType = Get-OptionalEnv 'PDA_OLLAMA_CPU_PROFILE' 'Consumption'
         DeployAzureOpenAI   = Get-OptionalEnv 'PDA_DEPLOY_AZURE_OPENAI' 'false'
         AzureOpenAiEndpoint = Get-OptionalEnv 'PDA_AZURE_OPENAI_ENDPOINT' ''
         AzureOpenAiDeployment = Get-OptionalEnv 'PDA_AZURE_OPENAI_DEPLOYMENT' 'gpt-4o-mini'

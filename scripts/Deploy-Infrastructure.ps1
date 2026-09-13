@@ -27,7 +27,8 @@ $parameters = @(
     "webImage=$webImage"
     "ollamaUseGpu=$($config.OllamaUseGpu)"
     "ollamaModel=$($config.OllamaModel)"
-    "ollamaWorkloadProfileType=$($config.OllamaProfileType)"
+    "ollamaGpuWorkloadProfileType=$($config.OllamaGpuProfileType)"
+    "ollamaCpuWorkloadProfileType=$($config.OllamaCpuProfileType)"
 )
 if (-not [string]::IsNullOrWhiteSpace($config.DeployerPrincipalId)) {
     $parameters += "deployerPrincipalId=$($config.DeployerPrincipalId)"

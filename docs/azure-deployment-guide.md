@@ -129,7 +129,8 @@ Variables:
 | `PDA_HOST_GEOGRAPHY` | `Public cloud` | `EU-only` only after verifying hosting and data destinations; never on-premises |
 | `PDA_OLLAMA_USE_GPU` | `false` / `true` | Ollama on CPU (default) or serverless GPU |
 | `PDA_OLLAMA_MODEL` | `llama3.1` | Model pulled on start |
-| `PDA_OLLAMA_PROFILE` | `Consumption-GPU-NC8as-T4` | GPU profile used only when `PDA_OLLAMA_USE_GPU=true`; must match available GPU quota |
+| `PDA_OLLAMA_GPU_PROFILE` | `Consumption-GPU-NC8as-T4` | GPU profile used when `PDA_OLLAMA_USE_GPU=true`; must match available GPU quota |
+| `PDA_OLLAMA_CPU_PROFILE` | `Consumption` | CPU profile used when `PDA_OLLAMA_USE_GPU=false`; serverless `Consumption` or a dedicated size like `D4` |
 | `PDA_DEPLOY_AZURE_OPENAI` | `true` / `false` | Provision Azure OpenAI for the cloud Public route |
 | `PDA_AZURE_OPENAI_ENDPOINT` | *(v1 endpoint)* | Use an existing Azure OpenAI instead of provisioning |
 | `PDA_AZURE_OPENAI_DEPLOYMENT` | `gpt-4o-mini` | Deployment name the Public route targets |
@@ -223,7 +224,8 @@ Environment variables read by the deployment scripts
 | `PDA_IMAGE_TAG` | no | `GITHUB_SHA`/`local` | Image tag |
 | `PDA_OLLAMA_USE_GPU` | no | `false` | Ollama on CPU (default) or serverless GPU |
 | `PDA_OLLAMA_MODEL` | no | `llama3.1` | Ollama model |
-| `PDA_OLLAMA_PROFILE` | no | `Consumption-GPU-NC8as-T4` | GPU workload profile (used only when `PDA_OLLAMA_USE_GPU=true`) |
+| `PDA_OLLAMA_GPU_PROFILE` | no | `Consumption-GPU-NC8as-T4` | GPU workload profile (used when `PDA_OLLAMA_USE_GPU=true`) |
+| `PDA_OLLAMA_CPU_PROFILE` | no | `Consumption` | CPU workload profile (used when `PDA_OLLAMA_USE_GPU=false`); serverless `Consumption` or a dedicated size |
 | `PDA_DEPLOY_AZURE_OPENAI` | no | `false` | Provision Azure OpenAI for the Public route |
 | `PDA_AZURE_OPENAI_ENDPOINT` | no | — | Existing endpoint, exactly `https://<resource>.openai.azure.com/openai/v1` (no trailing slash); the deploy script rejects other forms |
 | `PDA_AZURE_OPENAI_DEPLOYMENT` | no | `gpt-4o-mini` | Deployment name for the Public route |

@@ -12,5 +12,6 @@ param authTokenStoreSasUrl = readEnvironmentVariable('PDA_AUTH_TOKEN_STORE_SAS_U
 param azureOpenAiEndpoint = readEnvironmentVariable('PDA_AZURE_OPENAI_ENDPOINT')
 param ollamaUseGpu = false
 param ollamaModel = 'llama3.1'
-param ollamaWorkloadProfileType = 'Consumption-GPU-NC8as-T4'
+param ollamaGpuWorkloadProfileType = 'Consumption-GPU-NC8as-T4'
+param ollamaCpuWorkloadProfileType = 'Consumption'
 param immutabilityDays = 365
