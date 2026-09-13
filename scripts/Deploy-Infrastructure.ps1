@@ -31,8 +31,18 @@ $templateParameters = @{
     ollamaGpuWorkloadProfileType = $config.OllamaGpuProfileType
     ollamaCpuWorkloadProfileType = $config.OllamaCpuProfileType
 }
-if (-not [string]::IsNullOrWhiteSpace($config.DeployerPrincipalId)) {
-    $templateParameters.deployerPrincipalId = $config.DeployerPrincipalId
+# Role assignments require the *service principal* (Enterprise App) object ID. A raw
+# DEPLOYER_PRINCIPAL_ID variable often holds the App Registration's *Application* object ID,
+# which Azure rejects (PrincipalTypeNotSupported). Resolve the SP object ID from the logged-in
+# OIDC identity so the correct principal type is always used.
+$deployerObjectId = $config.DeployerPrincipalId
+$ctxAccountId = (Get-AzContext).Account.Id
+if (-not [string]::IsNullOrWhiteSpace($ctxAccountId)) {
+    $deployerSp = Get-AzADServicePrincipal -ApplicationId $ctxAccountId -ErrorAction SilentlyContinue
+    if ($deployerSp) { $deployerObjectId = $deployerSp.Id }
+}
+if (-not [string]::IsNullOrWhiteSpace($deployerObjectId)) {
+    $templateParameters.deployerPrincipalId = $deployerObjectId
 }
 if ($config.DeployAzureOpenAI -eq 'true') {
     $templateParameters.deployAzureOpenAI      = $true
