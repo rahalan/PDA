@@ -21,7 +21,7 @@ $templateParameters = @{
     location                     = $config.Location
     authTenantId                 = Get-RequiredEnv 'PDA_AUTH_TENANT_ID'
     authClientId                 = Get-RequiredEnv 'PDA_AUTH_CLIENT_ID'
-    authClientSecret             = ConvertTo-SecureString (Get-RequiredEnv 'PDA_AUTH_CLIENT_SECRET') -AsPlainText -Force
+    authClientSecret             = Get-RequiredEnv 'PDA_AUTH_CLIENT_SECRET'
     hostGeography                = Get-OptionalEnv 'PDA_HOST_GEOGRAPHY' 'Public cloud'
     namePrefix                   = $config.NamePrefix
     acrName                      = $config.AcrName
@@ -58,7 +58,7 @@ $storageKey = (Get-AzStorageAccountKey -ResourceGroupName $config.ResourceGroup 
 $storageContext = New-AzStorageContext -StorageAccountName $config.TokenStoreAccountName -StorageAccountKey $storageKey
 $sasExpiry = (Get-Date).ToUniversalTime().AddYears(2)
 $tokenStoreSasUrl = New-AzStorageContainerSASToken -Context $storageContext -Name 'tokens' -Permission rwdl -ExpiryTime $sasExpiry -Protocol HttpsOnly -FullUri
-$templateParameters.authTokenStoreSasUrl = ConvertTo-SecureString $tokenStoreSasUrl -AsPlainText -Force
+$templateParameters.authTokenStoreSasUrl = $tokenStoreSasUrl
 
 Initialize-Bicep
 
