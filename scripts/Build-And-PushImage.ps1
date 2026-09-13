@@ -31,20 +31,27 @@ try {
 }
 
 Write-Step "Provisioning resource group and registry through Bicep/AVM"
-Invoke-Az deployment sub create `
-    --name "pda-bootstrap-$($config.NamePrefix)" `
-    --location $config.Location `
-    --template-file (Join-Path $config.RepoRoot 'infra/bootstrap.bicep') `
-    --parameters "location=$($config.Location)" "resourceGroupName=$($config.ResourceGroup)" "acrName=$($config.AcrName)" "tokenStoreAccountName=$($config.TokenStoreAccountName)" `
-    --output none
+Initialize-Bicep
+New-AzSubscriptionDeployment `
+    -Name "pda-bootstrap-$($config.NamePrefix)" `
+    -Location $config.Location `
+    -TemplateFile (Join-Path $config.RepoRoot 'infra/bootstrap.bicep') `
+    -TemplateParameterObject @{
+        location              = $config.Location
+        resourceGroupName     = $config.ResourceGroup
+        acrName               = $config.AcrName
+        tokenStoreAccountName = $config.TokenStoreAccountName
+    } | Out-Null
 
+# az acr build has no Azure PowerShell equivalent; it builds the image server-side in ACR.
 Write-Step "Building image $image from $($config.RepoRoot)"
-Invoke-Az acr build `
+az acr build `
     --registry $config.AcrName `
     --image "$($config.ImageRepository):$($config.ImageTag)" `
     --timeout 1800 `
     --file (Join-Path $config.RepoRoot 'Dockerfile') `
     $config.RepoRoot
+if ($LASTEXITCODE -ne 0) { throw "az acr build failed (exit $LASTEXITCODE)." }
 
 Set-GitHubOutput -Name 'image' -Value $image
 Write-Step "Image published: $image"

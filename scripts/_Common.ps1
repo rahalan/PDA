@@ -4,7 +4,7 @@
 .DESCRIPTION
     Dot-source this file from the other scripts. It centralises configuration
     (read from environment variables so the GitHub Actions workflow stays free of
-    logic) and provides small helpers for running native az commands and emitting
+    logic) and provides small helpers for Azure PowerShell operations and emitting
     step outputs.
 #>
 
@@ -33,15 +33,20 @@ function Get-OptionalEnv {
     return $value
 }
 
-function Invoke-Az {
-    <# Runs an az command and throws on a non-zero exit code. #>
-    param([Parameter(Mandatory, ValueFromRemainingArguments)][string[]]$Arguments)
-    Write-Host "az $($Arguments -join ' ')" -ForegroundColor DarkGray
-    $result = & az @Arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "az command failed (exit $LASTEXITCODE): az $($Arguments -join ' ')"
+function Initialize-Bicep {
+    <#
+        Azure PowerShell transpiles .bicep templates with the standalone Bicep CLI.
+        Ensure it is discoverable, installing it through the Azure CLI when absent.
+    #>
+    if (Get-Command bicep -ErrorAction SilentlyContinue) { return }
+    az bicep install *> $null
+    $binDir = Join-Path $HOME '.azure/bin'
+    if ((Test-Path $binDir) -and ($env:PATH -notlike "*$binDir*")) {
+        $env:PATH = "$binDir$([IO.Path]::PathSeparator)$env:PATH"
     }
-    return $result
+    if (-not (Get-Command bicep -ErrorAction SilentlyContinue)) {
+        throw 'The Bicep CLI is required to transpile templates but could not be provisioned.'
+    }
 }
 
 function Get-PdaConfig {

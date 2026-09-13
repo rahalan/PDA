@@ -13,8 +13,6 @@ $config = Get-PdaConfig
 if ((Get-RequiredEnv 'PDA_DELETE_CONFIRM') -cne 'delete') { throw 'Set PDA_DELETE_CONFIRM=delete to authorize deletion of the disposable resource group.' }
 
 Write-Step "Deleting resource group $($config.ResourceGroup)"
-Invoke-Az group delete `
-    --name $config.ResourceGroup `
-    --yes
+Remove-AzResourceGroup -Name $config.ResourceGroup -Force | Out-Null
 
 Write-Step "Deletion completed for $($config.ResourceGroup)."
