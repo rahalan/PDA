@@ -62,14 +62,14 @@ $templateParameters.authTokenStoreSasUrl = $tokenStoreSasUrl
 
 Initialize-Bicep
 
-$validation = Test-AzResourceGroupDeployment -ResourceGroupName $config.ResourceGroup -TemplateFile $templateFile -TemplateParameterObject $templateParameters
+$validation = Test-AzResourceGroupDeployment -ResourceGroupName $config.ResourceGroup -TemplateFile $templateFile -TemplateParameterObject $templateParameters -WarningAction SilentlyContinue
 if ($validation) { throw "Template validation failed: $(($validation | ForEach-Object { $_.Message }) -join '; ')" }
 
 $webName = "$($config.NamePrefix)-web"
 if (Get-Command Get-AzContainerApp -ErrorAction SilentlyContinue) {
-    $apps = Get-AzContainerApp -ResourceGroupName $config.ResourceGroup -ErrorAction SilentlyContinue
-    if ($apps.Name -contains $webName) {
-        $revisions = Get-AzContainerAppRevision -ResourceGroupName $config.ResourceGroup -ContainerAppName $webName | Where-Object Active
+    $existingApp = Get-AzContainerApp -ResourceGroupName $config.ResourceGroup -Name $webName -ErrorAction SilentlyContinue
+    if ($existingApp) {
+        $revisions = Get-AzContainerAppRevision -ResourceGroupName $config.ResourceGroup -ContainerAppName $webName -ErrorAction SilentlyContinue | Where-Object { $_.Active }
         foreach ($revision in $revisions) {
             Disable-AzContainerAppRevision -ResourceGroupName $config.ResourceGroup -ContainerAppName $webName -RevisionName $revision.Name | Out-Null
         }
