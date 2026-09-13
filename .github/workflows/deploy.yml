@@ -1,0 +1,84 @@
+name: Deploy PDA to Azure
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'app/**'
+      - 'public/**'
+      - 'server.mjs'
+      - 'package.json'
+      - 'Dockerfile'
+      - 'infra/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - '.github/workflows/deploy.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: pda-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: production
+    env:
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      PDA_NAME_PREFIX: ${{ vars.PDA_NAME_PREFIX }}
+      PDA_IMAGE_TAG: ${{ github.sha }}
+      PDA_OLLAMA_USE_GPU: ${{ vars.PDA_OLLAMA_USE_GPU }}
+      PDA_OLLAMA_MODEL: ${{ vars.PDA_OLLAMA_MODEL }}
+      PDA_OLLAMA_GPU_PROFILE: ${{ vars.PDA_OLLAMA_GPU_PROFILE }}
+      PDA_OLLAMA_CPU_PROFILE: ${{ vars.PDA_OLLAMA_CPU_PROFILE }}
+      PDA_HOST_GEOGRAPHY: ${{ vars.PDA_HOST_GEOGRAPHY }}
+      PDA_DEPLOY_AZURE_OPENAI: ${{ vars.PDA_DEPLOY_AZURE_OPENAI }}
+      PDA_AZURE_OPENAI_ENDPOINT: ${{ vars.PDA_AZURE_OPENAI_ENDPOINT }}
+      PDA_AZURE_OPENAI_DEPLOYMENT: ${{ vars.PDA_AZURE_OPENAI_DEPLOYMENT }}
+      PDA_AZURE_OPENAI_MODEL: ${{ vars.PDA_AZURE_OPENAI_MODEL }}
+      PDA_AZURE_OPENAI_MODEL_VERSION: ${{ vars.PDA_AZURE_OPENAI_MODEL_VERSION }}
+      PDA_AZURE_OPENAI_CAPACITY: ${{ vars.PDA_AZURE_OPENAI_CAPACITY }}
+      PDA_AUTH_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      PDA_AUTH_CLIENT_ID: ${{ vars.PDA_AUTH_CLIENT_ID }}
+      PDA_AUTH_CLIENT_SECRET: ${{ secrets.PDA_AUTH_CLIENT_SECRET }}
+      PDA_AUTH_TOKEN_STORE_SAS_URL: ${{ secrets.PDA_AUTH_TOKEN_STORE_SAS_URL }}
+      DEPLOYER_PRINCIPAL_ID: ${{ vars.DEPLOYER_PRINCIPAL_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Select subscription
+        shell: pwsh
+        run: ./scripts/Connect-Azure.ps1
+
+      - name: Build and push image
+        id: build
+        shell: pwsh
+        run: ./scripts/Build-And-PushImage.ps1
+
+      - name: Deploy infrastructure
+        id: deploy
+        shell: pwsh
+        env:
+          PDA_WEB_IMAGE: ${{ steps.build.outputs.image }}
+        run: ./scripts/Deploy-Infrastructure.ps1
