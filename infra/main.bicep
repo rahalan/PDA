@@ -33,8 +33,8 @@ param hostGeography string = 'Public cloud'
 @description('Container registry name. Leave empty to derive one; the pipeline passes a deterministic name so it can build and push before this deployment runs.')
 param acrName string = ''
 
-@description('Deploy cloud Ollama on a Container Apps serverless GPU profile; this cannot satisfy on-premises requirements.')
-param deployOllama bool = true
+@description('Run the Ollama route on a serverless GPU profile (fast, requires GPU quota in the target region). When false (default), Ollama runs CPU-only on the Consumption profile: no GPU quota, but slower. Azure is not on-premises either way.')
+param ollamaUseGpu bool = false
 
 @description('Container image for the Ollama route.')
 param ollamaImage string = 'docker.io/ollama/ollama:0.3.14'
@@ -42,14 +42,20 @@ param ollamaImage string = 'docker.io/ollama/ollama:0.3.14'
 @description('Model tag used by both the Azure Ollama container and the application. Azure is not on-premises.')
 param ollamaModel string = 'llama3.1'
 
-@description('Serverless GPU workload profile type for the Ollama route. Requires GPU quota in the target region.')
+@description('Serverless GPU workload profile type for the Ollama route when ollamaUseGpu is true. Requires GPU quota in the target region.')
 param ollamaWorkloadProfileType string = 'Consumption-GPU-NC8as-T4'
 
-@description('vCPU allocated to the Ollama container (must fit the chosen GPU profile).')
-param ollamaCpu int = 8
+@description('vCPU allocated to the Ollama container on the GPU profile (must fit the chosen GPU profile).')
+param ollamaGpuCpu int = 8
 
-@description('Memory allocated to the Ollama container (must fit the chosen GPU profile).')
-param ollamaMemory string = '56Gi'
+@description('Memory allocated to the Ollama container on the GPU profile (must fit the chosen GPU profile).')
+param ollamaGpuMemory string = '56Gi'
+
+@description('vCPU allocated to the Ollama container on the CPU (Consumption) profile. The Consumption profile allows at most 4 vCPU.')
+param ollamaCpuCores int = 4
+
+@description('Memory allocated to the Ollama container on the CPU (Consumption) profile. The Consumption profile allows at most 8Gi.')
+param ollamaCpuMemory string = '8Gi'
 
 @description('Minimum Ollama replicas. 0 costs least but the first request must wait for a GPU cold start and the model download, which exceeds the bounded provider timeout; use 1 to keep the route warm for a demo.')
 @minValue(0)
@@ -242,22 +248,18 @@ module storage 'br/public:avm/res/storage/storage-account:0.33.0' = {
       ]
     }
     fileServices: {
-      shares: concat(
-        [
-          {
-            name: stateShareName
-            accessTier: 'TransactionOptimized'
-            shareQuota: 100
-          }
-        ],
-        deployOllama ? [
-          {
-            name: ollamaShareName
-            accessTier: 'TransactionOptimized'
-            shareQuota: 200
-          }
-        ] : []
-      )
+      shares: [
+        {
+          name: stateShareName
+          accessTier: 'TransactionOptimized'
+          shareQuota: 100
+        }
+        {
+          name: ollamaShareName
+          accessTier: 'TransactionOptimized'
+          shareQuota: 200
+        }
+      ]
     }
     roleAssignments: [
       {
@@ -352,7 +354,7 @@ module environment 'br/public:avm/res/app/managed-environment:0.16.0' = {
           workloadProfileType: 'Consumption'
         }
       ],
-      deployOllama ? [
+      ollamaUseGpu ? [
         {
           name: gpuProfileName
           workloadProfileType: ollamaWorkloadProfileType
@@ -361,38 +363,34 @@ module environment 'br/public:avm/res/app/managed-environment:0.16.0' = {
         }
       ] : []
     )
-    storages: concat(
-      [
-        {
-          kind: 'SMB'
-          accessMode: 'ReadWrite'
-          shareName: stateShareName
-          storageAccountName: storage.outputs.name
-        }
-      ],
-      deployOllama ? [
-        {
-          kind: 'SMB'
-          accessMode: 'ReadWrite'
-          shareName: ollamaShareName
-          storageAccountName: storage.outputs.name
-        }
-      ] : []
-    )
+    storages: [
+      {
+        kind: 'SMB'
+        accessMode: 'ReadWrite'
+        name: stateShareName
+        storageAccountName: storage.outputs.name
+      }
+      {
+        kind: 'SMB'
+        accessMode: 'ReadWrite'
+        name: ollamaShareName
+        storageAccountName: storage.outputs.name
+      }
+    ]
   }
 }
 
 // -------------------------------------------------------------------------------------------------
 // Cloud Ollama route (serverless GPU) — internal ingress only
 // -------------------------------------------------------------------------------------------------
-module ollamaApp 'br/public:avm/res/app/container-app:0.23.0' = if (deployOllama) {
+module ollamaApp 'br/public:avm/res/app/container-app:0.23.0' = {
   name: 'ollamaApp'
   params: {
     name: ollamaAppName
     location: location
     tags: tags
     environmentResourceId: environment.outputs.resourceId
-    workloadProfileName: gpuProfileName
+    workloadProfileName: ollamaUseGpu ? gpuProfileName : consumptionProfileName
     activeRevisionsMode: 'Single'
     ingressExternal: false
     ingressTargetPort: 11434
@@ -425,9 +423,12 @@ module ollamaApp 'br/public:avm/res/app/container-app:0.23.0' = if (deployOllama
           '-c'
           'ollama serve & server_pid=$!; trap "kill $server_pid" TERM INT EXIT; timeout 60 sh -c \'until ollama ls >/dev/null 2>&1; do sleep 1; done\' && timeout 900 ollama pull "$PDA_OLLAMA_MODEL" || exit 1; wait "$server_pid"'
         ]
-        resources: {
-          cpu: ollamaCpu
-          memory: ollamaMemory
+        resources: ollamaUseGpu ? {
+          cpu: ollamaGpuCpu
+          memory: ollamaGpuMemory
+        } : {
+          cpu: ollamaCpuCores
+          memory: ollamaCpuMemory
         }
         env: [
           {
@@ -458,7 +459,7 @@ module ollamaApp 'br/public:avm/res/app/container-app:0.23.0' = if (deployOllama
 // Web application (governance demo)
 // -------------------------------------------------------------------------------------------------
 var webFqdn = '${webAppName}.${environment.outputs.defaultDomain}'
-var ollamaBase = deployOllama ? 'https://${ollamaApp!.outputs.fqdn}/v1' : 'http://127.0.0.1:11434/v1'
+var ollamaBase = 'https://${ollamaApp.outputs.fqdn}/v1'
 
 var baseEnv = [
   { name: 'PDA_AUTH_TENANT_ID', value: authTenantId }
@@ -518,12 +519,12 @@ var baseEnv = [
 
 var webEnv = concat(
   baseEnv,
-  deployOllama ? [
+  [
     {
       name: 'PDA_OLLAMA_BASE'
       value: ollamaBase
     }
-  ] : [],
+  ],
   azureEnabled ? [
     {
       name: 'AZURE_OPENAI_ENDPOINT'

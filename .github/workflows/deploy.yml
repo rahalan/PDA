@@ -35,7 +35,7 @@ jobs:
       AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
       PDA_NAME_PREFIX: ${{ vars.PDA_NAME_PREFIX }}
       PDA_IMAGE_TAG: ${{ github.sha }}
-      PDA_DEPLOY_OLLAMA: ${{ vars.PDA_DEPLOY_OLLAMA }}
+      PDA_OLLAMA_USE_GPU: ${{ vars.PDA_OLLAMA_USE_GPU }}
       PDA_OLLAMA_MODEL: ${{ vars.PDA_OLLAMA_MODEL }}
       PDA_OLLAMA_PROFILE: ${{ vars.PDA_OLLAMA_PROFILE }}
       PDA_HOST_GEOGRAPHY: ${{ vars.PDA_HOST_GEOGRAPHY }}

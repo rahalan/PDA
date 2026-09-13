@@ -41,8 +41,8 @@ registry hosting `PDA_WEB_IMAGE`; required values deliberately have no secret de
 A single resource-group deployment ([infra/main.bicep](../infra/main.bicep)) creates:
 Log Analytics, Application Insights, a user-assigned managed identity, Container
 Registry, Key Vault (with an RSA KEK), a Storage account (SMB state share + unused
-archive container with an unlocked retention policy), a Container Apps environment, the web app, and — optionally — the
-serverless-GPU Ollama route and an Azure OpenAI (AI Foundry) account for the cloud
+archive container with an unlocked retention policy), a Container Apps environment, the web app, the
+Ollama route (CPU on the Consumption profile by default, optional serverless GPU) and — optionally — an Azure OpenAI (AI Foundry) account for the cloud
 Public route. See [azure-architecture.md](azure-architecture.md) for the full picture.
 
 Pipeline stages ([.github/workflows/deploy.yml](../.github/workflows/deploy.yml)):
@@ -57,9 +57,10 @@ Pipeline stages ([.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
 ## Prerequisites
 
 - An Azure subscription and permission to create resources and role assignments.
-- **GPU quota** for Container Apps serverless GPU in your target region if
-  `PDA_DEPLOY_OLLAMA=true` (e.g. `Consumption-GPU-NC8as-T4` in `swedencentral`).
-  Request quota, or set `PDA_DEPLOY_OLLAMA=false` to skip it.
+- **GPU quota** for Container Apps serverless GPU in your target region only if
+  `PDA_OLLAMA_USE_GPU=true` (e.g. `Consumption-GPU-NC8as-T4` in `swedencentral`).
+  The default (`PDA_OLLAMA_USE_GPU=false`) runs Ollama CPU-only on the Consumption
+  profile and needs no GPU quota, at the cost of slower inference.
 - Azure CLI ≥ 2.60 with the Bicep CLI (only for manual deploys).
 - A GitHub repository with Actions enabled.
 - Node 22.12 or later and PowerShell 7 for manual script execution.
@@ -122,13 +123,13 @@ Variables:
 | Variable | Example | Notes |
 | --- | --- | --- |
 | `AZURE_RESOURCE_GROUP` | `pda-demo-rg` | Created if missing |
-| `AZURE_LOCATION` | `swedencentral` | Use a GPU-capable region if deploying Ollama |
+| `AZURE_LOCATION` | `swedencentral` | Use a GPU-capable region only when `PDA_OLLAMA_USE_GPU=true` |
 | `PDA_NAME_PREFIX` | `pda` | 2–8 lower-case chars/digits |
 | `PDA_AUTH_CLIENT_ID` | *(web client ID)* | Separate from workflow identity |
 | `PDA_HOST_GEOGRAPHY` | `Public cloud` | `EU-only` only after verifying hosting and data destinations; never on-premises |
-| `PDA_DEPLOY_OLLAMA` | `true` / `false` | Toggle the GPU route |
+| `PDA_OLLAMA_USE_GPU` | `false` / `true` | Ollama on CPU (default) or serverless GPU |
 | `PDA_OLLAMA_MODEL` | `llama3.1` | Model pulled on start |
-| `PDA_OLLAMA_PROFILE` | `Consumption-GPU-NC8as-T4` | Must match available GPU quota |
+| `PDA_OLLAMA_PROFILE` | `Consumption-GPU-NC8as-T4` | GPU profile used only when `PDA_OLLAMA_USE_GPU=true`; must match available GPU quota |
 | `PDA_DEPLOY_AZURE_OPENAI` | `true` / `false` | Provision Azure OpenAI for the cloud Public route |
 | `PDA_AZURE_OPENAI_ENDPOINT` | *(v1 endpoint)* | Use an existing Azure OpenAI instead of provisioning |
 | `PDA_AZURE_OPENAI_DEPLOYMENT` | `gpt-4o-mini` | Deployment name the Public route targets |
@@ -220,9 +221,9 @@ Environment variables read by the deployment scripts
 | `PDA_ACR_NAME` | no | derived | Registry name (deterministic per sub+RG if unset) |
 | `PDA_IMAGE_REPOSITORY` | no | `pda/web` | Image repository |
 | `PDA_IMAGE_TAG` | no | `GITHUB_SHA`/`local` | Image tag |
-| `PDA_DEPLOY_OLLAMA` | no | `true` | Deploy the GPU route |
+| `PDA_OLLAMA_USE_GPU` | no | `false` | Ollama on CPU (default) or serverless GPU |
 | `PDA_OLLAMA_MODEL` | no | `llama3.1` | Ollama model |
-| `PDA_OLLAMA_PROFILE` | no | `Consumption-GPU-NC8as-T4` | GPU workload profile |
+| `PDA_OLLAMA_PROFILE` | no | `Consumption-GPU-NC8as-T4` | GPU workload profile (used only when `PDA_OLLAMA_USE_GPU=true`) |
 | `PDA_DEPLOY_AZURE_OPENAI` | no | `false` | Provision Azure OpenAI for the Public route |
 | `PDA_AZURE_OPENAI_ENDPOINT` | no | — | Existing endpoint, exactly `https://<resource>.openai.azure.com/openai/v1` (no trailing slash); the deploy script rejects other forms |
 | `PDA_AZURE_OPENAI_DEPLOYMENT` | no | `gpt-4o-mini` | Deployment name for the Public route |
@@ -270,7 +271,7 @@ $env:PDA_DELETE_CONFIRM = 'delete'
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `az deployment` fails on GPU profile | No GPU quota in region | Request quota or set `PDA_DEPLOY_OLLAMA=false` |
+| `az deployment` fails on GPU profile | No GPU quota in region | Request quota or set `PDA_OLLAMA_USE_GPU=false` to run Ollama CPU-only |
 | First Ollama turn refuses with a provider timeout | The GPU replica scales to zero, so the first request also waits for a cold start and the model download, which exceeds the bounded provider attempt | Deploy with `ollamaMinReplicas=1` to keep the route warm (GPU cost applies), or send one throwaway turn to trigger the pull and retry after it completes |
 | Login step fails (`AADSTS700...`) | Federated subject mismatch | Ensure the federated credential subject matches the run (environment/branch) |
 | Template role-assignment error | Deployer lacks `User Access Administrator` | Grant it at the deployment scope |

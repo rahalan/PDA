@@ -73,7 +73,7 @@ function Get-PdaConfig {
         AcrLoginServer      = "$acrName.azurecr.io"
         ImageRepository     = Get-OptionalEnv 'PDA_IMAGE_REPOSITORY' 'pda/web'
         ImageTag            = Get-OptionalEnv 'PDA_IMAGE_TAG' (Get-OptionalEnv 'GITHUB_SHA' 'local')
-        DeployOllama        = Get-OptionalEnv 'PDA_DEPLOY_OLLAMA' 'true'
+        OllamaUseGpu        = Get-OptionalEnv 'PDA_OLLAMA_USE_GPU' 'false'
         OllamaModel         = Get-OptionalEnv 'PDA_OLLAMA_MODEL' 'llama3.1'
         OllamaProfileType   = Get-OptionalEnv 'PDA_OLLAMA_PROFILE' 'Consumption-GPU-NC8as-T4'
         DeployAzureOpenAI   = Get-OptionalEnv 'PDA_DEPLOY_AZURE_OPENAI' 'false'

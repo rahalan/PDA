@@ -27,7 +27,7 @@ Infrastructure as Code (Bicep + Azure Verified Modules).
 | --- | --- | --- |
 | Web app (governance agent) | Azure Container Apps (Consumption profile) | Serves the chat/Admin/Compliance UI and the governed agent loop |
 | Cloud Public model route | Azure OpenAI / AI Foundry | Serves the Public route via **managed identity** (no key, no personal sign-in) |
-| Azure Ollama route | Azure Container Apps (serverless GPU profile) | Cloud-hosted inference, internal ingress only; cannot satisfy on-premises requirements |
+| Azure Ollama route | Azure Container Apps (CPU Consumption profile by default; optional serverless GPU) | Cloud-hosted inference, internal ingress only; cannot satisfy on-premises requirements |
 | At-rest key material | Azure Key Vault | RSA key-encryption key (KEK) that wraps the app data-encryption key |
 | Live state | Azure Storage — Azure Files (SMB) | Persists signing key, ledger, checkpoint and secrets across revisions |
 | Archive placeholder | Azure Storage — Blob | Unused container with an unlocked retention policy; no uploader or immutable evidence |
@@ -44,7 +44,7 @@ flowchart TB
     subgraph rg[Resource group]
         subgraph env[Container Apps environment]
             web["Web app<br/>Consumption profile<br/>external ingress :443 → :8110"]
-            ollama["Ollama route<br/>serverless GPU profile<br/>internal ingress :11434"]
+            ollama["Ollama route<br/>CPU (default) or GPU profile<br/>internal ingress :11434"]
         end
 
         acr[(Container Registry)]
@@ -265,9 +265,12 @@ updated runtime requires Node 22.12 or later and exclusive state ownership.
   by **Azure OpenAI via the managed identity** (set `PDA_PUBLIC_ROUTE=azure` with an
   `AZURE_OPENAI_ENDPOINT`); Copilot remains a local-only route. The Azure OpenAI
   account uses AAD-only auth (`disableLocalAuth: true`) — no keys are stored.
-- **Serverless GPU**: the Ollama profile requires GPU quota and regional availability.
-  The chosen profile type and the container CPU/memory must be compatible or the
-  deployment fails. GPU is optional (`deployOllama = false` removes it).
+- **Ollama compute profile**: the Ollama route runs CPU-only on the Consumption
+  profile by default (`ollamaUseGpu = false`, no GPU quota needed but slower CPU
+  inference). Set `ollamaUseGpu = true` to run it on a serverless GPU profile, which
+  requires GPU quota and regional availability; the chosen profile type and the
+  container CPU/memory must be compatible or the deployment fails. The Consumption
+  profile caps at 4 vCPU / 8Gi, so a large model may need a smaller tag on CPU.
 - **EU sovereignty**: Mistral/SimpleLLM endpoints are provider declarations, not
   independently attested execution locations.
 - **Immutability**: neither a locked archive nor an upload workflow is implemented.

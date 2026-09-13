@@ -22,7 +22,7 @@ See [model configuration and walkthrough](docs/DEMO.md). The signed ledger is ta
 
 An optional Azure deployment hosts the app on Azure Container Apps with Key Vault–backed
 at-rest encryption for secrets/signing keys (replacing Windows DPAPI), an unused archive container, and an
-optional serverless-GPU Ollama route — provisioned with Bicep and Azure Verified Modules,
+Ollama route that runs CPU-only by default with an optional serverless GPU — provisioned with Bicep and Azure Verified Modules,
 and shipped by GitHub Actions that call PowerShell scripts in [scripts/](scripts). The
 local demo above is unaffected; cloud behavior is enabled only through environment
 variables.

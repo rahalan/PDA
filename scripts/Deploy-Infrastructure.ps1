@@ -5,7 +5,7 @@
     Runs a resource-group scoped Bicep deployment that provisions Log Analytics,
     Application Insights, Key Vault, Storage (SMB state share + unused archive
     container), Container Registry, a user-assigned identity, the Container Apps
-    environment, the web app, and the optional serverless-GPU Ollama route.
+    environment, the web app, and the Ollama route (CPU by default, optional serverless GPU).
     Publishes the resulting web URL to the GitHub step output 'webUrl'.
 #>
 
@@ -25,7 +25,7 @@ $parameters = @(
     "namePrefix=$($config.NamePrefix)"
     "acrName=$($config.AcrName)"
     "webImage=$webImage"
-    "deployOllama=$($config.DeployOllama)"
+    "ollamaUseGpu=$($config.OllamaUseGpu)"
     "ollamaModel=$($config.OllamaModel)"
     "ollamaWorkloadProfileType=$($config.OllamaProfileType)"
 )
