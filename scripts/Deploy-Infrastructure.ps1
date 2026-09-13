@@ -21,7 +21,6 @@ $parameters = @(
     "location=$($config.Location)"
     "authTenantId=$(Get-RequiredEnv 'PDA_AUTH_TENANT_ID')"
     "authClientId=$(Get-RequiredEnv 'PDA_AUTH_CLIENT_ID')"
-    "hostGeography=$(Get-OptionalEnv 'PDA_HOST_GEOGRAPHY' 'Public cloud')"
     "namePrefix=$($config.NamePrefix)"
     "acrName=$($config.AcrName)"
     "webImage=$webImage"
@@ -68,6 +67,7 @@ try {
     @{
         authClientSecret = @{ value = Get-RequiredEnv 'PDA_AUTH_CLIENT_SECRET' }
         authTokenStoreSasUrl = @{ value = $tokenStoreSasUrl }
+        hostGeography = @{ value = Get-OptionalEnv 'PDA_HOST_GEOGRAPHY' 'Public cloud' }
     } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $secureFile
     $parameters += "@$secureFile"
     Invoke-Az deployment group validate --resource-group $config.ResourceGroup --template-file $templateFile --parameters $parameters --output none
