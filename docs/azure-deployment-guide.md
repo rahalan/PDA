@@ -133,9 +133,9 @@ Variables:
 | `PDA_OLLAMA_CPU_PROFILE` | `Consumption` | CPU profile used when `PDA_OLLAMA_USE_GPU=false`; serverless `Consumption` or a dedicated size like `D4` |
 | `PDA_DEPLOY_AZURE_OPENAI` | `true` / `false` | Provision Azure OpenAI for the cloud Public route |
 | `PDA_AZURE_OPENAI_ENDPOINT` | *(v1 endpoint)* | Use an existing Azure OpenAI instead of provisioning |
-| `PDA_AZURE_OPENAI_DEPLOYMENT` | `gpt-4o-mini` | Deployment name the Public route targets |
-| `PDA_AZURE_OPENAI_MODEL` | `gpt-4o-mini` | Model to deploy when provisioning |
-| `PDA_AZURE_OPENAI_MODEL_VERSION` | `2024-07-18` | Check regional availability |
+| `PDA_AZURE_OPENAI_DEPLOYMENT` | `gpt-4.1-mini` | Deployment name the Public route targets |
+| `PDA_AZURE_OPENAI_MODEL` | `gpt-4.1-mini` | Model to deploy when provisioning |
+| `PDA_AZURE_OPENAI_MODEL_VERSION` | `2025-04-14` | Check regional availability |
 | `PDA_AZURE_OPENAI_CAPACITY` | `10` | Thousands of tokens/minute; requires quota |
 | `DEPLOYER_PRINCIPAL_ID` | *(SP object ID)* | Optional; grants KV Secrets Officer |
 
@@ -228,8 +228,8 @@ Environment variables read by the deployment scripts
 | `PDA_OLLAMA_CPU_PROFILE` | no | `Consumption` | CPU workload profile (used when `PDA_OLLAMA_USE_GPU=false`); serverless `Consumption` or a dedicated size |
 | `PDA_DEPLOY_AZURE_OPENAI` | no | `false` | Provision Azure OpenAI for the Public route |
 | `PDA_AZURE_OPENAI_ENDPOINT` | no | — | Existing endpoint, exactly `https://<resource>.openai.azure.com/openai/v1` (no trailing slash); the deploy script rejects other forms |
-| `PDA_AZURE_OPENAI_DEPLOYMENT` | no | `gpt-4o-mini` | Deployment name for the Public route |
-| `PDA_AZURE_OPENAI_MODEL` | no | `gpt-4o-mini` | Model to deploy when provisioning |
+| `PDA_AZURE_OPENAI_DEPLOYMENT` | no | `gpt-4.1-mini` | Deployment name for the Public route |
+| `PDA_AZURE_OPENAI_MODEL` | no | `gpt-4.1-mini` | Model to deploy when provisioning |
 | `DEPLOYER_PRINCIPAL_ID` | no | — | Grants KV Secrets Officer to the deployer |
 | `PDA_WEB_IMAGE` | no | derived | Full image ref (set from the build step) |
 | `PDA_AUTH_TENANT_ID` | yes | — | Workflow maps from `AZURE_TENANT_ID` |

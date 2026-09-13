@@ -82,13 +82,13 @@ param deployAzureOpenAI bool = false
 param azureOpenAiEndpoint string = ''
 
 @description('Model deployment name the Public route targets.')
-param azureOpenAiDeployment string = 'gpt-4o-mini'
+param azureOpenAiDeployment string = 'gpt-4.1-mini'
 
 @description('Model name deployed when deployAzureOpenAI is true.')
-param azureOpenAiModel string = 'gpt-4o-mini'
+param azureOpenAiModel string = 'gpt-4.1-mini'
 
 @description('Model version deployed when deployAzureOpenAI is true.')
-param azureOpenAiModelVersion string = '2024-07-18'
+param azureOpenAiModelVersion string = '2025-04-14'
 
 @description('Tokens-per-minute capacity (thousands) for the model deployment.')
 @minValue(1)
@@ -227,6 +227,7 @@ module keyVault 'br/public:avm/res/key-vault/vault:0.14.0' = {
       empty(deployerPrincipalId) ? [] : [
         {
           principalId: deployerPrincipalId
+          principalType: 'ServicePrincipal'
           roleDefinitionIdOrName: 'Key Vault Secrets Officer'
         }
       ]

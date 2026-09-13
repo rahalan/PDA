@@ -38,7 +38,7 @@ if ($config.DeployAzureOpenAI -eq 'true') {
     $templateParameters.deployAzureOpenAI      = $true
     $templateParameters.azureOpenAiModel       = $config.AzureOpenAiModel
     $templateParameters.azureOpenAiDeployment  = $config.AzureOpenAiDeployment
-    $templateParameters.azureOpenAiModelVersion = Get-OptionalEnv 'PDA_AZURE_OPENAI_MODEL_VERSION' '2024-07-18'
+    $templateParameters.azureOpenAiModelVersion = Get-OptionalEnv 'PDA_AZURE_OPENAI_MODEL_VERSION' '2025-04-14'
     $templateParameters.azureOpenAiCapacity    = [int](Get-OptionalEnv 'PDA_AZURE_OPENAI_CAPACITY' '10')
 }
 elseif (-not [string]::IsNullOrWhiteSpace($config.AzureOpenAiEndpoint)) {

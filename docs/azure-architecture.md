@@ -253,7 +253,7 @@ Environment variables consumed by the app (set on the web container by Bicep):
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | — | AI connection string | Telemetry export target |
 | `PDA_PUBLIC_ROUTE` | `copilot` | `azure` | Which route serves the Public level by default |
 | `AZURE_OPENAI_ENDPOINT` | — | AOAI v1 endpoint | Azure OpenAI base URL for the Public route |
-| `AZURE_OPENAI_DEPLOYMENT` | `gpt-4o-mini` | deployment name | Model deployment used as the route model |
+| `AZURE_OPENAI_DEPLOYMENT` | `gpt-4.1-mini` | deployment name | Model deployment used as the route model |
 
 Local mode remains a trusted-workstation demo, fixed to loopback port 8110. Its
 updated runtime requires Node 22.12 or later and exclusive state ownership.
