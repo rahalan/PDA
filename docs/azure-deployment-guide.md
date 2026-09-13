@@ -116,7 +116,6 @@ Secrets:
 | `AZURE_TENANT_ID` | your tenant ID |
 | `AZURE_SUBSCRIPTION_ID` | your subscription ID |
 | `PDA_AUTH_CLIENT_SECRET` | Browser-login registration's client secret |
-| `PDA_AUTH_TOKEN_STORE_SAS_URL` | Dedicated EasyAuth token container SAS URL |
 
 Variables:
 
@@ -235,7 +234,12 @@ Environment variables read by the deployment scripts
 | `PDA_AUTH_TENANT_ID` | yes | — | Workflow maps from `AZURE_TENANT_ID` |
 | `PDA_AUTH_CLIENT_ID` | yes | — | Browser app client ID |
 | `PDA_AUTH_CLIENT_SECRET` | yes | — | Secure EasyAuth credential |
-| `PDA_AUTH_TOKEN_STORE_SAS_URL` | yes | — | Secure token-store SAS |
+
+The EasyAuth token store is provisioned automatically: `bootstrap.bicep` creates a
+dedicated storage account (`<prefix>tok<token>`) with a `tokens` container, and the
+deploy script mints a 2-year container SAS at deploy time and passes it to `main.bicep`.
+No `PDA_AUTH_TOKEN_STORE_SAS_URL` secret is required. Override the derived account name
+with `PDA_TOKEN_STORE_ACCOUNT` if needed. The SAS expires in 2 years; redeploy to rotate it.
 
 Bicep parameters are documented inline in [infra/main.bicep](../infra/main.bicep).
 

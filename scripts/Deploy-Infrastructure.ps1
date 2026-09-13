@@ -53,12 +53,21 @@ else {
     throw 'Configure PDA_DEPLOY_AZURE_OPENAI=true or PDA_AZURE_OPENAI_ENDPOINT. Cloud Copilot login is disabled.'
 }
 
+# Mint the EasyAuth token-store SAS from the account bootstrap created earlier.
+# Call az directly (not Invoke-Az) so the account key and SAS never reach the logs.
+$accountKey = az storage account keys list --account-name $config.TokenStoreAccountName --resource-group $config.ResourceGroup --query '[0].value' --output tsv
+if ($LASTEXITCODE -ne 0) { throw "Failed to read the token-store account key for $($config.TokenStoreAccountName)." }
+$sasExpiry = (Get-Date).ToUniversalTime().AddYears(2).ToString('yyyy-MM-ddTHH:mm:ssZ')
+$sasToken = az storage container generate-sas --account-name $config.TokenStoreAccountName --name tokens --permissions rwdl --expiry $sasExpiry --https-only --auth-mode key --account-key $accountKey --output tsv
+if ($LASTEXITCODE -ne 0) { throw 'Failed to generate the token-store container SAS.' }
+$tokenStoreSasUrl = "https://$($config.TokenStoreAccountName).blob.core.windows.net/tokens?$sasToken"
+
 $secureFile = [IO.Path]::GetTempFileName()
 try {
     if (-not $IsWindows) { [IO.File]::SetUnixFileMode($secureFile, [IO.UnixFileMode]::UserRead -bor [IO.UnixFileMode]::UserWrite) }
     @{
         authClientSecret = @{ value = Get-RequiredEnv 'PDA_AUTH_CLIENT_SECRET' }
-        authTokenStoreSasUrl = @{ value = Get-RequiredEnv 'PDA_AUTH_TOKEN_STORE_SAS_URL' }
+        authTokenStoreSasUrl = @{ value = $tokenStoreSasUrl }
     } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $secureFile
     $parameters += "@$secureFile"
     Invoke-Az deployment group validate --resource-group $config.ResourceGroup --template-file $templateFile --parameters $parameters --output none

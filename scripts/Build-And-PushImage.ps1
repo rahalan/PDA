@@ -14,7 +14,7 @@
 $config = Get-PdaConfig
 $image = "$($config.AcrLoginServer)/$($config.ImageRepository):$($config.ImageTag)"
 
-foreach ($required in @('PDA_AUTH_TENANT_ID', 'PDA_AUTH_CLIENT_ID', 'PDA_AUTH_CLIENT_SECRET', 'PDA_AUTH_TOKEN_STORE_SAS_URL')) { Get-RequiredEnv $required | Out-Null }
+foreach ($required in @('PDA_AUTH_TENANT_ID', 'PDA_AUTH_CLIENT_ID', 'PDA_AUTH_CLIENT_SECRET')) { Get-RequiredEnv $required | Out-Null }
 if ($config.DeployAzureOpenAI -ne 'true' -and [string]::IsNullOrWhiteSpace($config.AzureOpenAiEndpoint)) { throw 'Configure an Azure OpenAI route before building.' }
 $validationRoot = Join-Path ([IO.Path]::GetTempPath()) "pda-validation-$([guid]::NewGuid().ToString('N'))"
 try {
@@ -35,7 +35,7 @@ Invoke-Az deployment sub create `
     --name "pda-bootstrap-$($config.NamePrefix)" `
     --location $config.Location `
     --template-file (Join-Path $config.RepoRoot 'infra/bootstrap.bicep') `
-    --parameters "location=$($config.Location)" "resourceGroupName=$($config.ResourceGroup)" "acrName=$($config.AcrName)" `
+    --parameters "location=$($config.Location)" "resourceGroupName=$($config.ResourceGroup)" "acrName=$($config.AcrName)" "tokenStoreAccountName=$($config.TokenStoreAccountName)" `
     --output none
 
 Write-Step "Building image $image from $($config.RepoRoot)"

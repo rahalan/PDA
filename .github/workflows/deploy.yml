@@ -49,7 +49,6 @@ jobs:
       PDA_AUTH_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       PDA_AUTH_CLIENT_ID: ${{ vars.PDA_AUTH_CLIENT_ID }}
       PDA_AUTH_CLIENT_SECRET: ${{ secrets.PDA_AUTH_CLIENT_SECRET }}
-      PDA_AUTH_TOKEN_STORE_SAS_URL: ${{ secrets.PDA_AUTH_TOKEN_STORE_SAS_URL }}
       DEPLOYER_PRINCIPAL_ID: ${{ vars.DEPLOYER_PRINCIPAL_ID }}
     steps:
       - name: Checkout

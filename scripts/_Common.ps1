@@ -55,14 +55,21 @@ function Get-PdaConfig {
     $location = Get-OptionalEnv 'AZURE_LOCATION' 'swedencentral'
     $namePrefix = Get-OptionalEnv 'PDA_NAME_PREFIX' 'pda'
 
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    $bytes = $sha.ComputeHash([Text.Encoding]::UTF8.GetBytes("$subscriptionId/$resourceGroup"))
+    $token = ([System.BitConverter]::ToString($bytes)).Replace('-', '').ToLower().Substring(0, 12)
+
     $acrName = Get-OptionalEnv 'PDA_ACR_NAME' ''
     if ([string]::IsNullOrWhiteSpace($acrName)) {
-        $sha = [System.Security.Cryptography.SHA256]::Create()
-        $bytes = $sha.ComputeHash([Text.Encoding]::UTF8.GetBytes("$subscriptionId/$resourceGroup"))
-        $token = ([System.BitConverter]::ToString($bytes)).Replace('-', '').ToLower().Substring(0, 12)
         $acrName = "$($namePrefix)acr$token"
     }
     $acrName = $acrName.ToLower()
+
+    $tokenStoreAccountName = Get-OptionalEnv 'PDA_TOKEN_STORE_ACCOUNT' ''
+    if ([string]::IsNullOrWhiteSpace($tokenStoreAccountName)) {
+        $tokenStoreAccountName = "$($namePrefix)tok$token"
+    }
+    $tokenStoreAccountName = $tokenStoreAccountName.ToLower()
 
     [pscustomobject]@{
         SubscriptionId      = $subscriptionId
@@ -71,6 +78,7 @@ function Get-PdaConfig {
         NamePrefix          = $namePrefix
         AcrName             = $acrName
         AcrLoginServer      = "$acrName.azurecr.io"
+        TokenStoreAccountName = $tokenStoreAccountName
         ImageRepository     = Get-OptionalEnv 'PDA_IMAGE_REPOSITORY' 'pda/web'
         ImageTag            = Get-OptionalEnv 'PDA_IMAGE_TAG' (Get-OptionalEnv 'GITHUB_SHA' 'local')
         OllamaUseGpu        = Get-OptionalEnv 'PDA_OLLAMA_USE_GPU' 'false'
