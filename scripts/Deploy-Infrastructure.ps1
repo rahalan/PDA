@@ -94,7 +94,23 @@ $deployment = New-AzResourceGroupDeployment `
     -TemplateParameterObject $templateParameters
 
 $webUrl = $deployment.Outputs['webUrl'].Value
-Invoke-RestMethod -Uri "$webUrl/healthz" -TimeoutSec 30 | Out-Null
+
+# The revision cold-starts (image pull, SMB mount, app boot), so poll until healthy instead of a single request.
+$healthDeadline = (Get-Date).AddMinutes(5)
+$healthy = $false
+do {
+    try {
+        Invoke-RestMethod -Uri "$webUrl/healthz" -TimeoutSec 15 | Out-Null
+        $healthy = $true
+    }
+    catch {
+        if ((Get-Date) -ge $healthDeadline) {
+            throw "Health check for $webUrl/healthz did not succeed within the warm-up window: $($_.Exception.Message)"
+        }
+        Start-Sleep -Seconds 10
+    }
+} until ($healthy)
+
 $anonymous = Invoke-WebRequest -Uri "$webUrl/api/state" -SkipHttpErrorCheck -MaximumRedirection 0 -ErrorAction SilentlyContinue -TimeoutSec 30
 if ($anonymous.StatusCode -notin @(302, 401, 403)) { throw 'Anonymous API access was not rejected; deployment requires investigation.' }
 
