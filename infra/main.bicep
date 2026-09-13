@@ -354,6 +354,8 @@ module environment 'br/public:avm/res/app/managed-environment:0.16.0' = {
     location: location
     tags: tags
     zoneRedundant: false
+    // External web ingress requires the environment to accept public traffic (AVM defaults to Disabled).
+    publicNetworkAccess: 'Enabled'
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsWorkspaceResourceId: logAnalytics.outputs.resourceId
