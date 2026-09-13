@@ -34,6 +34,7 @@ registry hosting `PDA_WEB_IMAGE`; required values deliberately have no secret de
   - [Manual / local deployment](#manual--local-deployment)
   - [Configuration reference](#configuration-reference)
   - [Teardown](#teardown)
+  - [State recovery](#state-recovery)
   - [Troubleshooting](#troubleshooting)
 
 ## What gets deployed
@@ -115,6 +116,7 @@ Secrets:
 | `AZURE_CLIENT_ID` | app (client) ID from step 1 |
 | `AZURE_TENANT_ID` | your tenant ID |
 | `AZURE_SUBSCRIPTION_ID` | your subscription ID |
+| `PDA_AUTH_CLIENT_ID` | Browser-login registration's application (client) ID |
 | `PDA_AUTH_CLIENT_SECRET` | Browser-login registration's client secret |
 
 Variables:
@@ -124,7 +126,6 @@ Variables:
 | `AZURE_RESOURCE_GROUP` | `pda-demo-rg` | Created if missing |
 | `AZURE_LOCATION` | `swedencentral` | Use a GPU-capable region only when `PDA_OLLAMA_USE_GPU=true` |
 | `PDA_NAME_PREFIX` | `pda` | 2–8 lower-case chars/digits |
-| `PDA_AUTH_CLIENT_ID` | *(web client ID)* | Separate from workflow identity |
 | `PDA_HOST_GEOGRAPHY` | `Public cloud` | `EU-only` only after verifying hosting and data destinations; never on-premises |
 | `PDA_OLLAMA_USE_GPU` | `false` / `true` | Ollama on CPU (default) or serverless GPU |
 | `PDA_OLLAMA_MODEL` | `llama3.1` | Model pulled on start |
