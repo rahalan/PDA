@@ -43,6 +43,10 @@ module tokenStore 'br/public:avm/res/storage/storage-account:0.33.0' = {
     allowBlobPublicAccess: false
     allowSharedKeyAccess: true
     publicNetworkAccess: 'Enabled'
+    networkAcls: {
+      defaultAction: 'Allow'
+      bypass: 'AzureServices'
+    }
     tags: tags
     blobServices: {
       containers: [

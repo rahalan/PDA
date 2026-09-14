@@ -252,6 +252,11 @@ module storage 'br/public:avm/res/storage/storage-account:0.33.0' = {
     // The managed environment mounts the SMB share using the account key, so shared-key and public access stay on.
     allowSharedKeyAccess: true
     publicNetworkAccess: 'Enabled'
+    // The non-VNet Container Apps environment mounts over the public endpoint, so the firewall must allow it.
+    networkAcls: {
+      defaultAction: 'Allow'
+      bypass: 'AzureServices'
+    }
     tags: tags
     blobServices: {
       containerDeleteRetentionPolicyEnabled: true
