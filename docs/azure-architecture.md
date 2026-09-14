@@ -11,15 +11,18 @@ Infrastructure as Code (Bicep + Azure Verified Modules).
 
 ## Contents
 
-- [Component overview](#component-overview)
-- [Topology diagram](#topology-diagram)
-- [Request and inference flow](#request-and-inference-flow)
-- [Data at rest and encryption](#data-at-rest-and-encryption)
-- [Identity and access](#identity-and-access)
-- [Networking and ingress](#networking-and-ingress)
-- [Azure Verified Modules used](#azure-verified-modules-used)
-- [Runtime configuration](#runtime-configuration)
-- [Design decisions and honest limitations](#design-decisions-and-honest-limitations)
+- [PDA on Azure — Architecture](#pda-on-azure--architecture)
+  - [Contents](#contents)
+  - [Component overview](#component-overview)
+  - [Topology diagram](#topology-diagram)
+  - [Request and inference flow](#request-and-inference-flow)
+  - [Data at rest and encryption](#data-at-rest-and-encryption)
+  - [Ledger observability (OpenTelemetry)](#ledger-observability-opentelemetry)
+  - [Identity and access](#identity-and-access)
+  - [Networking and ingress](#networking-and-ingress)
+  - [Azure Verified Modules used](#azure-verified-modules-used)
+  - [Runtime configuration](#runtime-configuration)
+  - [Design decisions and honest limitations](#design-decisions-and-honest-limitations)
 
 ## Component overview
 
@@ -95,6 +98,10 @@ OpenAI via managed identity**. Copilot remains a local-only route. See
   ID token's signature, issuer, audience, expiry and tenant, enforces application
   roles, validates Host and same-origin, and binds chat ownership to identity and
   the browser capability. A cookie or unsigned principal header grants no cloud authority.
+  EasyAuth also applies its own cross-site-request-forgery mitigation, which rejects a
+  session-authenticated `POST` whose `Origin` is not approved; the web app's own FQDN is
+  therefore listed in `login.allowedExternalRedirectUrls`, otherwise every browser API
+  write returns an empty `403`.
 3. For non-Copilot routes the SDK is pointed at an **in-process proxy**
    (`/internal/model/<token>/v1`) on the same container, which performs the actual,
    policy-checked egress:
@@ -201,11 +208,22 @@ OpenAI accounts need an explicit operator-managed role assignment.
   `ollamaMinReplicas=1` to keep it warm at GPU cost.
 - **Health probe**: `/healthz` is exempt from the host/origin guards so Container Apps
   liveness/readiness checks succeed regardless of the probe's `Host` header.
+- **Storage and Key Vault reachability**: the environment is **not** VNet-injected, so
+  the state and token-store storage accounts are reached over their public endpoints
+  with the SMB account key, and Key Vault over its public endpoint. The templates enable
+  shared-key and public network access and set `networkAcls.defaultAction` to `Allow` on
+  the storage accounts. Every resource and the resource group is tagged
+  `SecurityControl: Ignore` so a subscription's storage-hardening Azure Policy (disable
+  shared key / public access / default-deny) exempts them; without that exemption the SMB
+  mount and Key Vault access fail closed (`VolumeMountFailure: mount error(13)`).
 - **Single web replica** (`minReplicas = maxReplicas = 1`) because the append-only
   ledger must not be written concurrently. This setting alone does not prevent
   overlapping revisions: an exclusive filesystem lock is also required. Deployment
-  scripts deactivate old revisions before updating, with downtime. Stale locks
-  require verified operator recovery, never automatic age-based deletion.
+  scripts deactivate old revisions before updating, with downtime. During a rolling
+  redeploy the incoming revision waits (up to 120 s in cloud mode) for the previous
+  writer to release the lock on graceful shutdown; it never force-reclaims or
+  age-deletes a held lock, so a genuinely stale lock still needs verified operator
+  recovery.
 
 ## Azure Verified Modules used
 
@@ -271,6 +289,10 @@ updated runtime requires Node 22.12 or later and exclusive state ownership.
   requires GPU quota and regional availability; the chosen profile type and the
   container CPU/memory must be compatible or the deployment fails. The Consumption
   profile caps at 4 vCPU / 8Gi, so a large model may need a smaller tag on CPU.
+- **Container image**: the runtime image installs `ca-certificates`. The Copilot SDK's
+  native (Rust) HTTP client loads the system CA trust store to make outbound TLS calls,
+  and the `-slim` base image omits it, so without that layer every model turn fails with
+  "No CA certificates were loaded from the system".
 - **EU sovereignty**: Mistral/SimpleLLM endpoints are provider declarations, not
   independently attested execution locations.
 - **Immutability**: neither a locked archive nor an upload workflow is implemented.
@@ -278,5 +300,8 @@ updated runtime requires Node 22.12 or later and exclusive state ownership.
   archival/retention approval remains work before claiming production compliance.
 - **Statefulness**: the design assumes a single web replica for ledger integrity; it is
   not horizontally scaled.
-- **Verification**: source tests and Bicep compilation are not live Azure proof.
-  See the deployment guide for remaining runtime, identity, GPU and recovery checks.
+- **Verification**: a live Azure deployment has been exercised — Entra sign-in with app-role
+  isolation, Key Vault KEK access, the Azure Files (SMB) state mount and the Azure OpenAI
+  Public route reaching the model (a governed tool call required adding a `required` array to
+  the strict tool schemas). GPU, the EU provider routes, telemetry delivery and recovery paths
+  were not exercised. See the deployment guide's Troubleshooting for the issues found and fixed.
