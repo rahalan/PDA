@@ -160,7 +160,8 @@ export class AgentRunner {
         const allowed = new sdk.ToolSet(); TOOL_IDS.forEach(id => allowed.addCustom(id));
         const tools = TOOL_IDS.map(id => sdk.defineTool(id, {
           description: id === 'sales' ? 'Retrieve the fictional confidential sales contract SG-104. Use this whenever asked about sales records or contracts.' : id === 'weather' ? 'Get fictional demonstration weather for a city. Use this for weather requests.' : 'Attempt a policy-governed DRY RUN public send. Never performs real delivery.',
-          parameters: { type: 'object', properties: id === 'weather' ? { city: { type: 'string' } } : id === 'sales' ? { recordId: { type: 'string' } } : { message: { type: 'string' }, recipient: { type: 'string' } }, additionalProperties: false },
+          // Strict function-calling (Azure OpenAI) requires `required` to list every property key.
+          parameters: { type: 'object', properties: id === 'weather' ? { city: { type: 'string' } } : id === 'sales' ? { recordId: { type: 'string' } } : { message: { type: 'string' }, recipient: { type: 'string' } }, required: id === 'weather' ? ['city'] : id === 'sales' ? ['recordId'] : ['message', 'recipient'], additionalProperties: false },
           handler: (args, invocation) => this.tool(run, id, args, invocation),
         }));
         run.session = await run.client.createSession({
