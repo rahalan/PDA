@@ -290,6 +290,8 @@ export class AgentRunner {
           httpStatus = response.status;
           if (!response.ok) {
             const raw = await bounded(response, 16384).catch(() => '');
+            // Operator diagnostic: the user-facing reason is sanitized, so record the raw provider error.
+            console.error(`[agent] provider ${route.id} HTTP ${response.status}: ${String(raw).split(run.token).join('<token>').slice(0, 900)}`);
             reason = this.providerFailure(route, response.status, raw);
             failureCode = 'provider_rejected';
             retryable = this.canFallbackStatus(response.status);
