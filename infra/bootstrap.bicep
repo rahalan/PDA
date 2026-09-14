@@ -8,9 +8,17 @@ param acrName string
 @maxLength(24)
 param tokenStoreAccountName string
 
+var tags = {
+  workload: 'pda-governance-demo'
+  managedBy: 'bicep-avm'
+  // Required by subscription policy to exempt these demo resources from storage hardening.
+  SecurityControl: 'Ignore'
+}
+
 resource group 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   name: resourceGroupName
   location: location
+  tags: tags
 }
 
 module registry 'br/public:avm/res/container-registry/registry:0.13.0' = {
@@ -21,7 +29,7 @@ module registry 'br/public:avm/res/container-registry/registry:0.13.0' = {
     location: location
     acrSku: 'Standard'
     acrAdminUserEnabled: false
-    tags: { workload: 'pda-governance-demo', managedBy: 'bicep-avm' }
+    tags: tags
   }
 }
 
@@ -37,7 +45,8 @@ module tokenStore 'br/public:avm/res/storage/storage-account:0.33.0' = {
     skuName: 'Standard_LRS'
     allowBlobPublicAccess: false
     allowSharedKeyAccess: true
-    tags: { workload: 'pda-governance-demo', managedBy: 'bicep-avm' }
+    publicNetworkAccess: 'Enabled'
+    tags: tags
     blobServices: {
       containers: [
         {

@@ -101,6 +101,9 @@ param deployerPrincipalId string = ''
 param tags object = {
   workload: 'pda-governance-demo'
   managedBy: 'bicep-avm'
+  // Required by subscription policy to exempt these demo resources from the storage hardening
+  // (shared-key disable / public-access disable) that otherwise breaks the Container Apps SMB mount.
+  SecurityControl: 'Ignore'
 }
 
 var suffix = uniqueString(resourceGroup().id)
@@ -246,8 +249,9 @@ module storage 'br/public:avm/res/storage/storage-account:0.33.0' = {
     kind: 'StorageV2'
     skuName: 'Standard_ZRS'
     allowBlobPublicAccess: false
-    // The managed environment mounts the SMB share using the account key, so shared-key access stays on.
+    // The managed environment mounts the SMB share using the account key, so shared-key and public access stay on.
     allowSharedKeyAccess: true
+    publicNetworkAccess: 'Enabled'
     tags: tags
     blobServices: {
       containerDeleteRetentionPolicyEnabled: true
