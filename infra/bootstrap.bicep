@@ -9,9 +9,6 @@ param acrName string
 param tokenStoreAccountName string
 
 var tags = {
-  workload: 'pda-governance-demo'
-  managedBy: 'bicep-avm'
-  // Required by subscription policy to exempt these demo resources from storage hardening.
   SecurityControl: 'Ignore'
 }
 
