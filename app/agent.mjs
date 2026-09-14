@@ -261,9 +261,13 @@ export class AgentRunner {
       if (routePlan.routes[0].id !== run.route.id) throw failure('route_changed', 'Model authorization changed; the old route is withheld.');
       let length = 0; const chunks = [];
       for await (const chunk of req) { length += chunk.length; if (length > 1024 * 1024) throw failure('request_too_large', 'Model context exceeded its limit.'); chunks.push(chunk); }
-      const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-      // stream_options is only valid when streaming; we force non-streaming, so it must go too.
-      body.stream = false; delete body.stream_options; body.max_tokens = 512; body.temperature = 0.2;
+      const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      // Forward only standard chat-completions fields; the SDK adds provider-specific
+      // arguments (stream_options, reasoning_effort, snippy, ...) that Azure OpenAI rejects.
+      const PASSTHROUGH = ['messages', 'tools', 'tool_choice', 'parallel_tool_calls', 'response_format', 'top_p', 'stop', 'seed', 'n', 'presence_penalty', 'frequency_penalty', 'logit_bias'];
+      const body = {};
+      for (const key of PASSTHROUGH) if (parsed[key] !== undefined) body[key] = parsed[key];
+      body.stream = false; body.max_tokens = 512; body.temperature = 0.2;
       if (!Array.isArray(body.messages)) throw failure('invalid_messages', 'Structured model messages are required.');
       if (!run.live) throw failure('turn_ended', 'Turn ended.');
       const candidates = routePlan.fallbackEnabled ? routePlan.routes : routePlan.routes.slice(0, 1);
