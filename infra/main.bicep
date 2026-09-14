@@ -599,6 +599,10 @@ module webApp 'br/public:avm/res/app/container-app:0.23.0' = {
         }
       }
       login: {
+        // Own origin must be approved or EasyAuth's CSRF mitigation rejects same-origin POSTs with 403.
+        allowedExternalRedirectUrls: [
+          'https://${webFqdn}'
+        ]
         tokenStore: {
           enabled: true
           azureBlobStorage: { sasUrlSettingName: 'auth-token-store' }
