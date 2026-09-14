@@ -198,6 +198,8 @@ module keyVault 'br/public:avm/res/key-vault/vault:0.14.0' = {
     enableRbacAuthorization: true
     enablePurgeProtection: true
     enableSoftDelete: true
+    // The non-VNet Container Apps environment reaches Key Vault over the public endpoint (policy-exempt via tag).
+    publicNetworkAccess: 'Enabled'
     tags: tags
     keys: [
       {
