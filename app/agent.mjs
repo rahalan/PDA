@@ -282,6 +282,7 @@ export class AgentRunner {
         let reason;
         let failureCode;
         let httpStatus;
+        let providerDetail;
         let retryable = false;
         try {
           const timeout = Math.max(1, Math.min(60_000, run.deadline - Date.now()));
@@ -291,7 +292,8 @@ export class AgentRunner {
           if (!response.ok) {
             const raw = await bounded(response, 16384).catch(() => '');
             // Operator diagnostic: the user-facing reason is sanitized, so record the raw provider error.
-            console.error(`[agent] provider ${route.id} HTTP ${response.status}: ${String(raw).split(run.token).join('<token>').slice(0, 900)}`);
+            providerDetail = String(raw).split(run.token).join('<token>').replace(/Bearer\s+[A-Za-z0-9._-]+/g, 'Bearer <redacted>').replace(/\s+/g, ' ').slice(0, 600);
+            console.error(`[agent] provider ${route.id} HTTP ${response.status}: ${providerDetail}`);
             reason = this.providerFailure(route, response.status, raw);
             failureCode = 'provider_rejected';
             retryable = this.canFallbackStatus(response.status);
@@ -316,7 +318,7 @@ export class AgentRunner {
           const canFallback = retryable && Boolean(nextRoute) && Date.now() + 1000 < run.deadline;
           this.readiness[route.id] = { ok: false, message: reason, checkedAt: new Date().toISOString(), ...(httpStatus ? { httpStatus } : {}) };
           this.event('model-egress-failed', run.chat, { routeId: route.id, model: route.model, outcome: 'failed',
-            reason: failureCode, message: reason, httpStatus, retryable, fallbackRouteId: canFallback ? nextRoute.id : null });
+            reason: failureCode, message: reason, httpStatus, retryable, detail: providerDetail, fallbackRouteId: canFallback ? nextRoute.id : null });
           if (canFallback) {
             if (!run.failedRouteIds.includes(route.id)) run.failedRouteIds.push(route.id);
             this.event('model-route-fallback', run.chat, { outcome: 'authorized', fromRouteId: route.id,
