@@ -72,6 +72,36 @@ $templateParameters.authTokenStoreSasUrl = $tokenStoreSasUrl
 
 Initialize-Bicep
 
+# Purge soft-deleted leftovers from a prior teardown that would block recreation of same-named
+# resources: Cognitive Services accounts (always purgeable) and Key Vaults that are not
+# purge-protected. Best-effort; if anything fails the real deployment error still surfaces.
+if (Get-Command az -ErrorAction SilentlyContinue) {
+    $previousNativePref = $PSNativeCommandUseErrorActionPreference
+    $PSNativeCommandUseErrorActionPreference = $false
+    try {
+        az account set --subscription $config.SubscriptionId 2>$null | Out-Null
+
+        $deletedCognitive = az cognitiveservices account list-deleted --query "[?starts_with(name, '$($config.NamePrefix)aoai')].{name:name, location:location}" -o json 2>$null | ConvertFrom-Json
+        foreach ($account in @($deletedCognitive)) {
+            Write-Step "Purging soft-deleted Cognitive Services account $($account.name)"
+            az cognitiveservices account purge --name $account.name --resource-group $config.ResourceGroup --location $account.location --only-show-errors 2>$null | Out-Null
+        }
+
+        $deletedVaults = az keyvault list-deleted --query "[?starts_with(name, '$($config.NamePrefix)-kv')].{name:name, protected:properties.purgeProtectionEnabled}" -o json 2>$null | ConvertFrom-Json
+        foreach ($vault in @($deletedVaults)) {
+            if ($vault.protected) { continue }
+            Write-Step "Purging soft-deleted Key Vault $($vault.name)"
+            az keyvault purge --name $vault.name --only-show-errors 2>$null | Out-Null
+        }
+    }
+    catch {
+        Write-Step "Soft-delete purge step skipped: $($_.Exception.Message)"
+    }
+    finally {
+        $PSNativeCommandUseErrorActionPreference = $previousNativePref
+    }
+}
+
 $validation = Test-AzResourceGroupDeployment -ResourceGroupName $config.ResourceGroup -TemplateFile $templateFile -TemplateParameterObject $templateParameters -WarningAction SilentlyContinue
 if ($validation) { throw "Template validation failed: $(($validation | ForEach-Object { $_.Message }) -join '; ')" }
 
