@@ -105,6 +105,30 @@ do {
     }
     catch {
         if ((Get-Date) -ge $healthDeadline) {
+            Write-Step 'Health check failed; dumping recent container logs for diagnosis'
+            try {
+                $workspace = Get-AzOperationalInsightsWorkspace -ResourceGroupName $config.ResourceGroup | Select-Object -First 1
+                if ($workspace) {
+                    $kql = @"
+union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppSystemLogs_CL
+| where ContainerAppName_s == '$webName'
+| where TimeGenerated > ago(30m)
+| project TimeGenerated, Type, Log_s, Reason_s
+| order by TimeGenerated asc
+| take 200
+"@
+                    $logs = Invoke-AzOperationalInsightsQuery -WorkspaceId $workspace.CustomerId -Query $kql
+                    foreach ($row in $logs.Results) {
+                        Write-Host "[$($row.TimeGenerated)] $($row.Log_s)$($row.Reason_s)"
+                    }
+                }
+                else {
+                    Write-Host 'No Log Analytics workspace found in the resource group.'
+                }
+            }
+            catch {
+                Write-Host "Log retrieval failed: $($_.Exception.Message)"
+            }
             throw "Health check for $webUrl/healthz did not succeed within the warm-up window: $($_.Exception.Message)"
         }
         Start-Sleep -Seconds 10
