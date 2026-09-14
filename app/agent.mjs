@@ -262,7 +262,8 @@ export class AgentRunner {
       let length = 0; const chunks = [];
       for await (const chunk of req) { length += chunk.length; if (length > 1024 * 1024) throw failure('request_too_large', 'Model context exceeded its limit.'); chunks.push(chunk); }
       const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-      body.stream = false; body.max_tokens = 512; body.temperature = 0.2;
+      // stream_options is only valid when streaming; we force non-streaming, so it must go too.
+      body.stream = false; delete body.stream_options; body.max_tokens = 512; body.temperature = 0.2;
       if (!Array.isArray(body.messages)) throw failure('invalid_messages', 'Structured model messages are required.');
       if (!run.live) throw failure('turn_ended', 'Turn ended.');
       const candidates = routePlan.fallbackEnabled ? routePlan.routes : routePlan.routes.slice(0, 1);
