@@ -4,10 +4,14 @@ This guide provisions the PDA governance demo to Azure Container Apps using Bice
 (Azure Verified Modules) and GitHub Actions. All Azure logic lives in PowerShell
 scripts under `scripts/`; the workflows only orchestrate them.
 
-**Validation status:** source regression checks and Bicep compilation are not a
-completed deployment. Linux SDK startup, Azure Files permissions, Entra sign-in,
-role isolation, Key Vault access, GPU readiness and telemetry delivery still need
-verification in a disposable Azure environment. Use synthetic data only.
+**Validation status:** a live Azure deployment has now been exercised against a
+disposable environment. Verified there: Entra sign-in with app-role isolation, Key
+Vault KEK access, the Azure Files (SMB) state mount, and the Azure OpenAI Public
+route reaching the model (including a governed tool call once the tool schema was
+fixed). GPU readiness, the EU provider routes and telemetry delivery were not
+exercised. Several deployment and runtime issues were found and fixed along the way
+(see [Troubleshooting](#troubleshooting)); some fixes ship on the next redeploy. Use
+synthetic data only.
 
 Eight isolated source regressions cover signed user tokens and role isolation,
 HTTP identity binding, state-lock exclusion, versioned key envelopes, pinned-policy
@@ -16,9 +20,9 @@ OpenTelemetry log export. JavaScript/PowerShell syntax and both Bicep templates
 pass. The seven direct npm dependencies had no known CVEs in the advisory check;
 that is not a transitive-dependency or container-image security assessment.
 
-No Azure resources were deployed during these repairs. The archive remains unused
-and unlocked. The manual parameter example requires `PDA_ACR_NAME` to match the
-registry hosting `PDA_WEB_IMAGE`; required values deliberately have no secret defaults.
+The archive remains unused and unlocked. The manual parameter example requires
+`PDA_ACR_NAME` to match the registry hosting `PDA_WEB_IMAGE`; required values
+deliberately have no secret defaults.
 
 ## Contents
 
@@ -77,6 +81,16 @@ Pipeline stages ([.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
   Track and rotate both the client secret and token-store SAS.
 - Azure public cloud only; national-cloud authorities are not supported by the
   application's signed-token validator.
+- **Storage hardening policy:** if the subscription enforces Azure Policy that
+  disables storage shared-key access, disables public network access, or denies the
+  network default action, the Azure Files SMB state mount fails
+  (`VolumeMountFailure: mount error(13)`) and the app cannot reach Key Vault. Every
+  resource and the resource group is tagged `SecurityControl: Ignore`, and the
+  templates explicitly enable shared-key, public access and `networkAcls
+  defaultAction Allow` on the storage accounts and Key Vault. Ensure your
+  organization's policy exemption is keyed on that tag (or grant an equivalent
+  exemption); the environment is not VNet-injected, so the storage accounts must be
+  publicly reachable with shared key.
 
 ## 1. Create the Entra app registration and federated credential
 
@@ -254,11 +268,15 @@ $env:PDA_DELETE_CONFIRM = 'delete'
 ./scripts/Remove-Infrastructure.ps1
 ```
 
-> Key Vault has **purge protection** enabled, so the vault is *recoverable* (not
-> immediately purgeable) until its soft-delete retention elapses. The compliance
-> archive is unused and its retention policy is unlocked. No immutable evidence is
-> produced. Policy locking requires separate retention approval and is not executed
-> by these scripts.
+> Key Vault has **purge protection disabled** (soft-delete retention only), so a
+> torn-down vault can be purged and re-created without manual recovery. Before the
+> main deployment, `Deploy-Infrastructure.ps1` best-effort purges soft-deleted
+> Cognitive Services accounts and non-purge-protected Key Vaults left by a prior
+> teardown, so redeploys don't collide on reserved names. A Key Vault created by an
+> earlier build with purge protection *on* cannot be purged until its retention
+> elapses; the current template uses a distinct vault name to avoid that collision.
+> The compliance archive is unused and its retention policy is unlocked; no
+> immutable evidence is produced.
 
 ## State recovery
 
@@ -286,3 +304,9 @@ $env:PDA_DELETE_CONFIRM = 'delete'
 | Public route errors in cloud | Copilot selected but no cloud model | Set `PDA_DEPLOY_AZURE_OPENAI=true` (or `PDA_AZURE_OPENAI_ENDPOINT`) so Public uses Azure OpenAI |
 | Azure OpenAI 401/403 | UAMI missing role or AAD-only auth | Ensure `Cognitive Services OpenAI User` on the account; provisioning sets it automatically |
 | App can't unwrap the data key | UAMI missing KV Crypto User or wrong `AZURE_KEY_VAULT_URI` | Verify role assignment and env vars on the container app |
+| Container `VolumeMountFailure: mount error(13): Permission denied` | Storage shared-key/public access disabled or firewall `defaultAction Deny` (usually an Azure Policy) | Apply the `SecurityControl: Ignore` tag exemption; the templates set shared-key, public access and `networkAcls defaultAction Allow` |
+| `403` (empty body, `x-ms-middleware-request-id` header) on `POST /api/chats` | EasyAuth CSRF mitigation rejects the same-origin POST when the origin isn't approved | The template sets `login.allowedExternalRedirectUrls` to the app's own origin; confirm it matches the current FQDN |
+| Login fails `AADSTS500113` (no reply address) / `AADSTS700054` (id_token disabled) | App registration missing the callback reply URL or ID-token issuance | Register `https://<web-fqdn>/.auth/login/aad/callback` and enable ID-token issuance; the deploy step also auto-registers the reply URL when the deployer owns the app registration |
+| New revision crash-loops `State is locked` after redeploy | Old and new revisions briefly share the state mount during a rolling deploy | Remote mode waits up to 120 s for the previous writer to release; if it persists, deactivate the old revision so it releases the lock |
+| Chat replies "Copilot execution failed" | SDK's native HTTP client found no system CA store | The container image installs `ca-certificates`; confirm that layer is present |
+| Chat replies "Azure OpenAI rejected the request (HTTP 400)" | Strict tool schema missing a `required` array | Tool `parameters` include a `required` array listing every property |
