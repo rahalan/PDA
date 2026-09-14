@@ -105,7 +105,7 @@ param tags object = {
 var suffix = uniqueString(resourceGroup().id)
 var storageAccountName = take(toLower(replace('${namePrefix}st${suffix}', '-', '')), 24)
 var acrNameEffective = empty(acrName) ? take(toLower(replace('${namePrefix}acr${suffix}', '-', '')), 50) : toLower(acrName)
-var keyVaultName = take('${namePrefix}-kv-${suffix}', 24)
+var keyVaultName = take('${namePrefix}-kv2-${suffix}', 24)
 var logAnalyticsName = '${namePrefix}-logs-${suffix}'
 var appInsightsName = '${namePrefix}-appi-${suffix}'
 var identityName = '${namePrefix}-id-${suffix}'
@@ -196,7 +196,9 @@ module keyVault 'br/public:avm/res/key-vault/vault:0.14.0' = {
     location: location
     sku: 'standard'
     enableRbacAuthorization: true
-    enablePurgeProtection: true
+    // Purge protection off so a torn-down demo vault can be purged and redeployed without manual recovery.
+    // Soft delete stays on because Azure enforces it and rejects disabling it.
+    enablePurgeProtection: false
     enableSoftDelete: true
     // The non-VNet Container Apps environment reaches Key Vault over the public endpoint (policy-exempt via tag).
     publicNetworkAccess: 'Enabled'
