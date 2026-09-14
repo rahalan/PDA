@@ -218,12 +218,13 @@ OpenAI accounts need an explicit operator-managed role assignment.
   mount and Key Vault access fail closed (`VolumeMountFailure: mount error(13)`).
 - **Single web replica** (`minReplicas = maxReplicas = 1`) because the append-only
   ledger must not be written concurrently. This setting alone does not prevent
-  overlapping revisions: an exclusive filesystem lock is also required. Deployment
-  scripts deactivate old revisions before updating, with downtime. During a rolling
-  redeploy the incoming revision waits (up to 120 s in cloud mode) for the previous
-  writer to release the lock on graceful shutdown; it never force-reclaims or
-  age-deletes a held lock, so a genuinely stale lock still needs verified operator
-  recovery.
+  overlapping revisions: an exclusive filesystem lock is also required. The deploy
+  script deactivates the old revisions **before** updating (brief downtime) and then
+  clears any orphaned `writer.lock` via the storage API — safe because the old writers
+  are already stopped. The app never auto-reclaims a held lock (two concurrent writers
+  would corrupt the ledger); the incoming revision only waits (up to 120 s in cloud
+  mode) for a graceful release. A stale lock left outside a deploy still needs verified
+  operator recovery.
 
 ## Azure Verified Modules used
 

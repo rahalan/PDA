@@ -106,13 +106,32 @@ $validation = Test-AzResourceGroupDeployment -ResourceGroupName $config.Resource
 if ($validation) { throw "Template validation failed: $(($validation | ForEach-Object { $_.Message }) -join '; ')" }
 
 $webName = "$($config.NamePrefix)-web"
-if (Get-Command Get-AzContainerApp -ErrorAction SilentlyContinue) {
-    $existingApp = Get-AzContainerApp -ResourceGroupName $config.ResourceGroup -Name $webName -ErrorAction SilentlyContinue
-    if ($existingApp) {
-        $revisions = Get-AzContainerAppRevision -ResourceGroupName $config.ResourceGroup -ContainerAppName $webName -ErrorAction SilentlyContinue | Where-Object { $_.Active }
-        foreach ($revision in $revisions) {
-            Disable-AzContainerAppRevision -ResourceGroupName $config.ResourceGroup -ContainerAppName $webName -RevisionName $revision.Name | Out-Null
+# Stop the previous writer before deploying so the incoming revision can take the single-writer state
+# lock cleanly. Uses the az CLI (the Az.App PowerShell module may be absent on the runner). Deactivating
+# the old revisions first makes clearing an orphaned writer.lock safe (no live writer can be displaced).
+if (Get-Command az -ErrorAction SilentlyContinue) {
+    $previousNativePref = $PSNativeCommandUseErrorActionPreference
+    $PSNativeCommandUseErrorActionPreference = $false
+    try {
+        $activeRevisions = @(az containerapp revision list --name $webName --resource-group $config.ResourceGroup --query "[?properties.active].name" -o tsv 2>$null | Where-Object { $_ })
+        foreach ($rev in $activeRevisions) {
+            Write-Step "Deactivating current revision $rev to release the state lock"
+            az containerapp revision deactivate --name $webName --resource-group $config.ResourceGroup --revision $rev --only-show-errors 2>$null | Out-Null
         }
+        if ($activeRevisions.Count -gt 0) {
+            Start-Sleep -Seconds 15
+            $stateAccount = az storage account list --resource-group $config.ResourceGroup --query "[?starts_with(name, '$($config.NamePrefix)st')].name" -o tsv 2>$null | Select-Object -First 1
+            if ($stateAccount) {
+                $stateKey = az storage account keys list --account-name $stateAccount --resource-group $config.ResourceGroup --query "[0].value" -o tsv 2>$null
+                az storage file delete --account-name $stateAccount --account-key $stateKey --share-name 'pda-state' --path 'writer.lock' --only-show-errors 2>$null | Out-Null
+            }
+        }
+    }
+    catch {
+        Write-Step "Revision/lock cleanup skipped: $($_.Exception.Message)"
+    }
+    finally {
+        $PSNativeCommandUseErrorActionPreference = $previousNativePref
     }
 }
 

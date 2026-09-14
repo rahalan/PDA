@@ -137,32 +137,22 @@ export function acquireStateLock(stateDir) {
   const lockPath = path.join(root, 'writer.lock');
   const owner = JSON.stringify({ host: os.hostname(), pid: process.pid, token: crypto.randomUUID() });
   // A rolling Container Apps deploy briefly overlaps old and new revisions on the shared state volume.
-  // In remote mode the live writer heartbeats the lock's mtime, so a lock whose mtime is stale belongs to
-  // a writer that died without releasing it and is reclaimed; a fresh lock is waited on. Local mode keeps
-  // the original fail-fast behaviour so a second writer on the trusted workstation is rejected immediately.
-  const remote = process.env.PDA_ALLOW_REMOTE === '1';
-  const heartbeatMs = 20_000;
-  const staleMs = 3 * heartbeatMs;
-  const deadline = Date.now() + (remote ? 120_000 : 0);
+  // In remote mode wait for the previous writer to release its lock on graceful shutdown; local mode
+  // keeps the original fail-fast behaviour. The lock is never auto-reclaimed by the app: two concurrent
+  // writers would corrupt the append-only ledger, so a genuinely orphaned lock is cleared by the deploy
+  // (which stops the old revisions first), never by an age heuristic here.
+  const deadline = Date.now() + (process.env.PDA_ALLOW_REMOTE === '1' ? 120_000 : 0);
   let descriptor;
   for (;;) {
     try { descriptor = fs.openSync(lockPath, 'wx', 0o600); break; }
     catch {
-      if (remote) {
-        try {
-          if (Date.now() - fs.statSync(lockPath).mtimeMs > staleMs) { fs.unlinkSync(lockPath); continue; }
-        } catch { continue; }
-      }
       if (Date.now() >= deadline) throw new Error('State is locked. Stop the previous writer; after a crash, an operator must verify it is stopped before removing writer.lock.');
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2000);
     }
   }
   try { fs.writeFileSync(descriptor, owner); fs.fsyncSync(descriptor); }
   finally { fs.closeSync(descriptor); }
-  const heartbeat = remote ? setInterval(() => { try { const now = new Date(); fs.utimesSync(lockPath, now, now); } catch { /* best effort */ } }, heartbeatMs) : null;
-  heartbeat?.unref?.();
   return () => {
-    if (heartbeat) clearInterval(heartbeat);
     if (fs.existsSync(lockPath) && fs.readFileSync(lockPath, 'utf8') === owner) fs.unlinkSync(lockPath);
   };
 }
