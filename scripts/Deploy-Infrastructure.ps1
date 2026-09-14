@@ -125,6 +125,29 @@ $deployment = New-AzResourceGroupDeployment `
 
 $webUrl = $deployment.Outputs['webUrl'].Value
 
+# Register the EasyAuth callback on the app registration so login works after the environment FQDN
+# changes (the domain suffix is regenerated whenever the resource group is recreated). Best-effort:
+# needs the deploying principal to own the app registration and a still-valid Graph token; on failure
+# it warns and continues (register the reply URL manually in that case).
+if (Get-Command az -ErrorAction SilentlyContinue) {
+    $previousNativePref = $PSNativeCommandUseErrorActionPreference
+    $PSNativeCommandUseErrorActionPreference = $false
+    try {
+        $clientId = $templateParameters.authClientId
+        $callbackUrl = "$webUrl/.auth/login/aad/callback"
+        $existingUris = az ad app show --id $clientId --query 'web.redirectUris' -o json 2>$null | ConvertFrom-Json
+        $redirectUris = @(@($existingUris) + $callbackUrl | Where-Object { $_ } | Select-Object -Unique)
+        Write-Step "Ensuring EasyAuth reply URL $callbackUrl is registered on app $clientId"
+        az ad app update --id $clientId --web-redirect-uris $redirectUris --enable-id-token-issuance true --only-show-errors 2>$null | Out-Null
+    }
+    catch {
+        Write-Step "Reply-URL registration skipped (register it manually if login fails): $($_.Exception.Message)"
+    }
+    finally {
+        $PSNativeCommandUseErrorActionPreference = $previousNativePref
+    }
+}
+
 # The revision cold-starts (image pull, SMB mount, app boot), so poll until healthy instead of a single request.
 $healthDeadline = (Get-Date).AddMinutes(5)
 $healthy = $false
