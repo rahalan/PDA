@@ -14,7 +14,11 @@ ENV NODE_ENV=production \
     PDA_PUBLIC_SCHEME=https \
     PORT=8110
 WORKDIR /app
-RUN groupadd --system app && useradd --system --gid app --home-dir /app app \
+# ca-certificates: the Copilot SDK's native HTTP client needs a system CA trust store (absent in -slim).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system app && useradd --system --gid app --home-dir /app app \
     && mkdir -p /state \
     && chown -R app:app /state
 COPY --from=build /app/node_modules ./node_modules

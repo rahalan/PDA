@@ -136,9 +136,18 @@ export function acquireStateLock(stateDir) {
   ensureDir(root);
   const lockPath = path.join(root, 'writer.lock');
   const owner = JSON.stringify({ host: os.hostname(), pid: process.pid, token: crypto.randomUUID() });
+  // A rolling Container Apps deploy briefly overlaps old and new revisions on the shared state volume.
+  // In remote mode, wait for the previous writer to release (graceful shutdown) before giving up; local
+  // mode keeps the original fail-fast behaviour so a second writer is rejected immediately.
+  const deadline = Date.now() + (process.env.PDA_ALLOW_REMOTE === '1' ? 120_000 : 0);
   let descriptor;
-  try { descriptor = fs.openSync(lockPath, 'wx', 0o600); }
-  catch { throw new Error('State is locked. Stop the previous writer; after a crash, an operator must verify it is stopped before removing writer.lock.'); }
+  for (;;) {
+    try { descriptor = fs.openSync(lockPath, 'wx', 0o600); break; }
+    catch {
+      if (Date.now() >= deadline) throw new Error('State is locked. Stop the previous writer; after a crash, an operator must verify it is stopped before removing writer.lock.');
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2000);
+    }
+  }
   try { fs.writeFileSync(descriptor, owner); fs.fsyncSync(descriptor); }
   finally { fs.closeSync(descriptor); }
   return () => {
