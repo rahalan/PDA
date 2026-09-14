@@ -99,10 +99,6 @@ param deployerPrincipalId string = ''
 
 @description('Tags applied to all resources.')
 param tags object = {
-  workload: 'pda-governance-demo'
-  managedBy: 'bicep-avm'
-  // Required by subscription policy to exempt these demo resources from the storage hardening
-  // (shared-key disable / public-access disable) that otherwise breaks the Container Apps SMB mount.
   SecurityControl: 'Ignore'
 }
 
