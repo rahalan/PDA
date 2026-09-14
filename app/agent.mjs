@@ -210,6 +210,8 @@ export class AgentRunner {
       }
     } catch (error) {
       const text = this.safeError(error);
+      // User-facing text stays sanitized; record a bounded, token-scrubbed reason to stderr for operators.
+      console.error(`[agent] turn failed route=${run.route?.id ?? 'none'} code=${error?.code ?? 'none'}: ${String(error?.stack || error?.message || error).split(run.token).join('<token>').slice(0, 800)}`);
       this.event('request-refused', chat, { outcome: 'denied', reason: error.code || 'sdk_error', message: text, source: 'governance' });
       chat.messages.push({ role: 'assistant', content: text, source: 'governance', at: new Date().toISOString() });
       this.governance.updateChat(chat);
