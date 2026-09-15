@@ -26,8 +26,8 @@
     "Highly Confidential": "On-premises"
   },
   "allowedModels": {
-    "Public": ["global"],
-    "Internal": ["eu"],
+    "Public": ["global", "eu", "onprem"],
+    "Internal": ["eu", "onprem"],
     "Highly Confidential": ["onprem"]
   },
   "allowedTools": {
