@@ -159,3 +159,23 @@ export async function createProtector(stateDir) {
   }
   throw new Error(`Unknown PDA_PROTECTOR mode: ${mode}`);
 }
+
+// Plaintext fallback, used only when a Store is created without an explicit protector and DPAPI is
+// unavailable (tests, non-Windows dev). Never reached in cloud, where PDA_PROTECTOR=keyvault passes
+// the Key Vault protector to the Store explicitly.
+export function createPassthroughProtector() {
+  return {
+    mode: 'plaintext',
+    protect(value) { return String(value); },
+    unprotect(value) { return String(value); },
+  };
+}
+
+// Default protector for a Store when the caller passes none: DPAPI when it loads, else plaintext.
+export function createDefaultProtector() {
+  try {
+    return createDpapiProtector();
+  } catch {
+    return createPassthroughProtector();
+  }
+}

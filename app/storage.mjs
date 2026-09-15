@@ -4,7 +4,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-import { createDpapiProtector } from './protector.mjs';
+import { createDefaultProtector } from './protector.mjs';
 
 const PRIVATE_KEY_FILE = 'vault/signing-key.bin';
 const PUBLIC_KEY_FILE = 'vault/signing-key.public';
@@ -178,7 +178,7 @@ export class Store {
   constructor(stateDir, options = {}) {
     this.repoRoot = findRepoRoot();
     this.root = this._resolveRoot(stateDir);
-    this._protector = options.protector || createDpapiProtector();
+    this._protector = options.protector || createDefaultProtector();
     // Optional, non-authoritative mirror of ledger appends (e.g. OpenTelemetry). Never load-bearing.
     this._onAppend = typeof options.onAppend === 'function' ? options.onAppend : null;
     this._ledgerPath = path.join(this.root, LEDGER_FILE);

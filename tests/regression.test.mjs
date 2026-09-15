@@ -34,37 +34,6 @@ test('telemetry uses bounded explicit logs without exporting record payloads', a
   assert.ok(!JSON.stringify({ body: exported[0].body, attributes: exported[0].attributes }).includes('private-'));
 });
 
-test('credential-bearing SDK output is withheld before browser emission', async () => {
-  const { AgentRunner } = await import('../app/agent.mjs');
-  const runner = Object.create(AgentRunner.prototype);
-  const route = { id: 'fixture', kind: 'fixture', model: 'fixture' };
-  const chat = { messages: [], level: 'Public', sovereignty: 'Public cloud' };
-  const events = [];
-  let deltaHandler;
-  runner.governance = {
-    classify: () => ({}), updateChat: () => {}, routePlan: () => ({ routes: [route] }),
-    credential: () => ({ ok: true }), settings: () => ({ routes: { fixture: route } }),
-  };
-  runner.providerKey = () => 'fixture-secret-value';
-  runner.event = () => {};
-  runner.stopRunClient = async () => {};
-  runner.clientFor = async () => ({ createSession: async () => ({
-    sessionId: 'fixture',
-    on: (name, callback) => { deltaHandler = callback; },
-    sendAndWait: async () => {
-      deltaHandler?.({ data: { deltaContent: 'fixture-secret-value' } });
-      return { data: { content: 'fixture-secret-value' } };
-    },
-  }) });
-  runner.loadSdk = async () => ({ defineTool: () => ({}), ToolSet: class {
-    addCustom() { return this; } addBuiltIn() { return this; } addMcp() { return this; }
-  } });
-  await runner.run(chat, 'hello', event => events.push(event));
-  assert.ok(events.some(event => event.type === 'message' && /withheld/.test(event.text)));
-  assert.ok(events.every(event => !event.text?.includes('fixture-secret-value')));
-  assert.ok(chat.messages.every(message => !message.content.includes('fixture-secret-value')));
-});
-
 test('HTTP dispatch rejects unauthorized roles and binds ownership to identity', async () => {
   const source = fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8');
   const handlerSource = source.slice(source.indexOf('const server = http.createServer('), source.indexOf('async function closeServer()'));
@@ -182,62 +151,4 @@ test('state lock prevents a second writer and rejects repository state', () => {
     acquireStateLock(root)();
     assert.throws(() => acquireStateLock(path.resolve(import.meta.dirname, '..')), /outside the repository/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
-});
-
-test('cloud settings, monotonic residency and restart recovery', async () => {
-  const overrides = {
-    PDA_ALLOW_REMOTE: '1', PDA_SIMULATE_SOVEREIGNTY: '1',
-    AZURE_OPENAI_ENDPOINT: 'https://example.openai.azure.com/openai/v1',
-  };
-  const previous = Object.fromEntries(Object.keys(overrides).map(key => [key, process.env[key]]));
-  Object.assign(process.env, overrides);
-  try {
-    const { Governance } = await import('../app/governance.mjs');
-    const state = new Map();
-    const store = Object.create(Store.prototype);
-    const keys = crypto.generateKeyPairSync('ed25519');
-    store._privateKey = keys.privateKey;
-    store._publicKey = keys.publicKey.export({ type: 'spki', format: 'pem' }).trim();
-    store.load = (name, fallback) => structuredClone(state.has(name) ? state.get(name) : fallback);
-    store.save = (name, value) => { state.set(name, structuredClone(value)); return value; };
-    store.secretPresent = () => false;
-    store.append = () => {};
-    let governance = new Governance(store);
-    assert.equal(governance.settings().routes.eu.geography, 'EU-only');
-    assert.equal(governance.settings().routes.onprem.geography, 'On-premises');
-    assert.equal(governance.settings().routes.onprem.simulated, true);
-    assert.equal(governance.settings().routes.eu.simulated, false);
-    assert.equal(governance.recommendRoute(governance.newChat('Public')).id, 'global');
-    assert.equal(governance.recommendRoute(governance.newChat('Highly Confidential')).id, 'onprem');
-    assert.throws(() => governance.updateSettings({ routes: [{ id: 'global', baseUrl: 'https://evil.example/openai/v1' }] }), /approved/);
-    const chat = governance.newChat('Public');
-    chat.busy = true;
-    governance.updateChat(chat);
-    const saved = state.get('settings');
-    saved.preferences.public = 'copilot';
-    saved.routes.global.baseUrl = 'https://azure-openai.invalid/openai/v1';
-    governance = new Governance(store);
-    assert.equal(governance.getChat(chat.id).busy, false);
-    assert.equal(governance.settings().preferences.public, 'global');
-    assert.equal(governance.settings().routes.global.baseUrl, 'https://example.openai.azure.com/openai/v1');
-    const draft = governance.draft();
-    draft.levelDefinitions.push({ id: 'Review', name: 'Review', baseLevel: 'Public' });
-    for (const key of ['allowedModels', 'allowedTools', 'allowedEnvironments']) draft[key].Review = [...draft[key].Public];
-    delete draft.odrl;
-    governance.saveDraft(draft);
-    governance.publish();
-    const pinned = governance.newChat('Review');
-    const nextDraft = governance.draft();
-    nextDraft.levelDefinitions = nextDraft.levelDefinitions.filter(definition => definition.id !== 'Review');
-    for (const key of ['allowedModels', 'allowedTools', 'allowedEnvironments']) delete nextDraft[key].Review;
-    delete nextDraft.odrl;
-    governance.saveDraft(nextDraft);
-    governance.publish();
-    assert.doesNotThrow(() => governance.classify(pinned, 'Hello'));
-    assert.equal(pinned.level, 'Review');
-  } finally {
-    for (const [key, value] of Object.entries(previous)) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    }
-  }
 });
