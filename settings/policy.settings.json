@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "name": "Cumulus Granitus enterprise governance",
+  "initialLevelId": "Public",
+  "baselineLevelIds": ["Public", "Internal", "Highly Confidential"],
+  "baselineEnvironmentIds": ["Public cloud", "Restricted Region", "On-premises"],
+  "levelDefinitions": [
+    { "id": "Public", "name": "Public", "baseLevel": "Public" },
+    { "id": "Internal", "name": "Internal", "baseLevel": "Internal" },
+    { "id": "Highly Confidential", "name": "Highly Confidential", "baseLevel": "Highly Confidential" }
+  ],
+  "environmentDefinitions": [
+    { "id": "Public cloud", "name": "Public cloud", "baseEnvironment": "Public cloud" },
+    { "id": "Restricted Region", "name": "Restricted Region", "baseEnvironment": "Restricted Region" },
+    { "id": "On-premises", "name": "On-premises", "baseEnvironment": "On-premises" },
+    { "id": "region-japan", "name": "Japan", "baseEnvironment": "Restricted Region", "aliases": ["japan", "japanese"] },
+    { "id": "region-korea", "name": "Korea", "baseEnvironment": "Restricted Region", "aliases": ["korea", "korean"] },
+    { "id": "region-eu", "name": "EU", "baseEnvironment": "Restricted Region", "aliases": ["eu", "european union", "germany", "german"] },
+    { "id": "region-brazil", "name": "Brazil", "baseEnvironment": "Restricted Region", "aliases": ["brazil", "brazilian"] },
+    { "id": "region-us", "name": "US", "baseEnvironment": "Restricted Region", "aliases": ["united states", "u.s.", "american"] },
+    { "id": "region-china", "name": "China", "baseEnvironment": "Restricted Region", "aliases": ["china", "chinese"] }
+  ],
+  "initialEnvironmentByBaseLevel": {
+    "Public": "Public cloud",
+    "Internal": "Restricted Region",
+    "Highly Confidential": "On-premises"
+  },
+  "allowedModels": {
+    "Public": ["copilot", "mistral", "simplellm", "ollama"],
+    "Internal": ["mistral", "simplellm", "ollama"],
+    "Highly Confidential": ["ollama"]
+  },
+  "allowedTools": {
+    "Public": [
+      "weather",
+      "public_send",
+      "eurotrust_atlas",
+      "verde_supply_pulse",
+      "stateside_market_grid",
+      "jade_manufacturing_index",
+      "forgelink_exchange",
+      "cispe_cloud_registry",
+      "civicbridge_network"
+    ],
+    "Internal": [
+      "sakura_exchange",
+      "han_river_index",
+      "eurotrust_atlas",
+      "verde_supply_pulse",
+      "stateside_market_grid",
+      "jade_manufacturing_index",
+      "forgelink_exchange",
+      "cispe_cloud_registry",
+      "civicbridge_network",
+      "sourceline_procurement",
+      "ledgerlens_finance",
+      "designvault_engineering",
+      "horizon_research_notebook",
+      "pearl_plant_console",
+      "rhine_plant_console"
+    ],
+    "Highly Confidential": [
+      "sales",
+      "sakura_exchange",
+      "han_river_index",
+      "eurotrust_atlas",
+      "verde_supply_pulse",
+      "stateside_market_grid",
+      "jade_manufacturing_index",
+      "forgelink_exchange",
+      "cispe_cloud_registry",
+      "civicbridge_network",
+      "sourceline_procurement",
+      "peoplecompass_hr",
+      "ledgerlens_finance",
+      "designvault_engineering",
+      "horizon_research_notebook",
+      "pearl_plant_console",
+      "kaizen_plant_console",
+      "rhine_plant_console",
+      "heartland_plant_console"
+    ]
+  },
+  "allowedEnvironments": {
+    "Public": ["Public cloud", "Restricted Region", "region-japan", "region-korea", "region-eu", "region-brazil", "region-us", "region-china", "On-premises"],
+    "Internal": ["Restricted Region", "region-japan", "region-korea", "region-eu", "region-brazil", "region-us", "region-china", "On-premises"],
+    "Highly Confidential": ["On-premises"]
+  },
+  "scopeTypes": [
+    { "id": "partner-network", "name": "Partner network", "displayName": "Partner network", "description": "A trusted external community boundary that may require an execution environment." },
+    { "id": "enterprise-organization", "name": "Enterprise organization", "displayName": "Enterprise organization", "description": "An internal organizational boundary that may require an execution environment." }
+  ],
+  "scopeDefinitions": [
+    { "id": "partner-industrial-community", "name": "Industrial Community", "type": "partner-network", "aliases": ["industrial community"], "requiredEnvironmentId": "Restricted Region", "builtIn": true },
+    { "id": "partner-cispe", "name": "CISPE", "type": "partner-network", "aliases": ["cispe"], "requiredEnvironmentId": "region-eu", "builtIn": true },
+    { "id": "partner-ngo-community", "name": "NGO Community", "type": "partner-network", "aliases": ["ngo community"], "requiredEnvironmentId": "Restricted Region", "builtIn": true },
+    { "id": "org-procurement", "name": "Procurement", "type": "enterprise-organization", "aliases": ["procurement"], "requiredEnvironmentId": "Restricted Region", "builtIn": true },
+    { "id": "org-hr", "name": "HR", "type": "enterprise-organization", "aliases": ["hr", "human resources"], "requiredEnvironmentId": "Restricted Region", "builtIn": true },
+    { "id": "org-finance", "name": "Finance", "type": "enterprise-organization", "aliases": ["finance"], "requiredEnvironmentId": "Restricted Region", "builtIn": true },
+    { "id": "org-engineering", "name": "Engineering", "type": "enterprise-organization", "aliases": ["engineering"], "requiredEnvironmentId": "Restricted Region", "builtIn": true },
+    { "id": "org-research", "name": "Research", "type": "enterprise-organization", "aliases": ["research"], "requiredEnvironmentId": "Restricted Region", "builtIn": true },
+    { "id": "org-manufacturing-china", "name": "Manufacturing China", "type": "enterprise-organization", "aliases": ["manufacturing china", "china manufacturing"], "requiredEnvironmentId": "region-china", "builtIn": true },
+    { "id": "org-manufacturing-japan", "name": "Manufacturing Japan", "type": "enterprise-organization", "aliases": ["manufacturing japan", "japan manufacturing"], "requiredEnvironmentId": "region-japan", "builtIn": true },
+    { "id": "org-manufacturing-germany", "name": "Manufacturing Germany", "type": "enterprise-organization", "aliases": ["manufacturing germany", "german manufacturing"], "requiredEnvironmentId": "region-eu", "builtIn": true },
+    { "id": "org-manufacturing-us", "name": "Manufacturing US", "type": "enterprise-organization", "aliases": ["manufacturing us", "manufacturing united states", "us manufacturing", "american manufacturing"], "requiredEnvironmentId": "region-us", "builtIn": true }
+  ],
+  "toolScopeRequirements": {
+    "forgelink_exchange": { "partnerNetworkId": "partner-industrial-community" },
+    "cispe_cloud_registry": { "partnerNetworkId": "partner-cispe" },
+    "civicbridge_network": { "partnerNetworkId": "partner-ngo-community" },
+    "sourceline_procurement": { "enterpriseOrganizationId": "org-procurement" },
+    "peoplecompass_hr": { "enterpriseOrganizationId": "org-hr" },
+    "ledgerlens_finance": { "enterpriseOrganizationId": "org-finance" },
+    "designvault_engineering": { "enterpriseOrganizationId": "org-engineering" },
+    "horizon_research_notebook": { "enterpriseOrganizationId": "org-research" },
+    "pearl_plant_console": { "enterpriseOrganizationId": "org-manufacturing-china" },
+    "kaizen_plant_console": { "enterpriseOrganizationId": "org-manufacturing-japan" },
+    "rhine_plant_console": { "enterpriseOrganizationId": "org-manufacturing-germany" },
+    "heartland_plant_console": { "enterpriseOrganizationId": "org-manufacturing-us" }
+  },
+  "routeEnvironmentDeclarations": {
+    "copilot": { "basis": "none", "attested": false, "statement": "Public-cloud route; no named-region declaration." },
+    "mistral": { "basis": "provider-declared", "attested": false, "statement": "EU execution is provider-declared and not independently attested." },
+    "simplellm": { "basis": "provider-declared", "attested": false, "statement": "EU execution is provider-declared and not independently attested." },
+    "ollama": { "basis": "demo-local-simulation", "attested": false, "statement": "Local On-premises demo route; named regional execution is simulated." }
+  },
+  "publicEgressToolIds": ["public_send"],
+  "obligations": ["sign", "log", "acceptPolicy"],
+  "classification": {
+    "protectedTerms": ["sales", "contract", "private", "confidential", "restricted"],
+    "protectedLevelId": "Highly Confidential",
+    "protectedEnvironmentId": "Restricted Region",
+    "internalTerms": ["internal"],
+    "internalLevelId": "Internal",
+    "internalEnvironmentId": "Restricted Region",
+    "scopedLevelId": "Public"
+  }
+}

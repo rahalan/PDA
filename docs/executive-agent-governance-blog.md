@@ -32,7 +32,7 @@ The core user promise is straightforward: **as a conversation becomes more sensi
 
 A user begins a chat at a confidentiality level allowed by company policy. If a later prompt or tool request touches protected information, the chat is elevated before that information is released. From that point forward, every model, tool and endpoint must remain eligible for the higher protection level. Returning to lower-confidentiality operation requires a genuinely new chat with separate context.
 
-Sovereignty is managed in parallel. Policy may require public cloud, sovereign cloud, EU-only hosting or on-premises execution. Once a conversation acquires a stronger location or hosting requirement, subsequent processing must respect it. If no compliant route is available, the agent refuses rather than quietly selecting a less protected provider.
+Execution environment is managed in parallel. Policy may require Public cloud, a named environment based on Restricted Region, or On-premises execution. Once a conversation acquires a stronger environment requirement, subsequent processing must respect it. If no compliant route is available, the agent refuses rather than quietly selecting a less protected provider.
 
 Consider a practical example:
 
@@ -65,7 +65,7 @@ This separation matters. The policy decision point determines what is allowed. E
 
 The project is designed around three distinct experiences.
 
-**Employees** get a familiar chat interface. They select the initial confidentiality level, see the current protection state, receive a clear warning when it rises and get an understandable explanation when an action is refused.
+**Employees** get a familiar chat interface. Every chat begins Public; explicit confidentiality and environment markers show the current protection state, warnings call out increases and refusals include understandable explanations.
 
 **Administrators** manage policy rather than editing every agent. They can control confidentiality and sovereignty rules, approved models, tools and endpoints, publish signed revisions and see which versions are active.
 

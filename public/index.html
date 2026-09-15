@@ -2,7 +2,6 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Cumulus Granitus · Chat</title>
     <script>
       (() => {
@@ -24,7 +23,7 @@
           <div class="brand-mark">CG</div>
           <div>
             <div class="brand-name">Cumulus Granitus</div>
-            <div class="brand-note">Demo · fictional tools</div>
+            <div class="brand-note">Hardened clouds · governed agents</div>
           </div>
         </div>
         <nav class="toplinks" aria-label="Views">
@@ -34,15 +33,20 @@
         </nav>
       </header>
 
-      <main class="page page--narrow">
-        <section class="panel panel--solid">
-          <div class="panel-head">
+      <main class="page page--wide chat-workspace">
+        <section class="panel panel--solid chat-panel">
+          <div class="panel-head chat-panel__head">
             <div>
-              <p class="eyebrow">User</p>
-              <h1>How can I help?</h1>
-              <p class="lede">Your enterprise assistant.</p>
+              <h1>Cairn</h1>
+              <p class="lede">Guidance set in stone.</p>
             </div>
-            <div id="chatBadges" class="badge-row" aria-live="polite"></div>
+            <div class="chat-header-actions">
+              <div id="chatMeta" class="meta"></div>
+              <button type="button" id="newChatButton" class="ghost">New chat</button>
+            </div>
+            <div class="chat-conversation-state">
+              <div id="chatBadges" class="badge-row" aria-label="Current protection" aria-live="polite"></div>
+            </div>
           </div>
 
           <div id="chatAlerts" class="alert-stack" aria-live="polite"></div>
@@ -50,24 +54,40 @@
 
           <form id="chatForm" class="composer">
             <label class="sr-only" for="promptInput">Prompt</label>
-            <textarea id="promptInput" name="prompt" rows="5" placeholder="Ask about a public weather lookup, a confidential record, or a follow-up." autocomplete="off"></textarea>
-            <div class="composer-row">
-              <label class="select-wrap" for="confidentialitySelect">
-                <span>Initial confidentiality</span>
-                <select id="confidentialitySelect" name="confidentiality"></select>
-              </label>
-              <div class="composer-actions">
-                <button type="button" id="newChatButton" class="ghost new-chat">New chat</button>
-                <button type="submit" class="primary" id="sendButton">Send</button>
-              </div>
+            <textarea id="promptInput" name="prompt" rows="5" placeholder="Ask about a shipment, plant issue, supplier, or customer decision." autocomplete="off"></textarea>
+            <div class="composer-actions">
+              <button type="submit" class="primary" id="sendButton">Send</button>
             </div>
           </form>
-
-          <div class="panel-foot">
-            <div id="chatMeta" class="meta"></div>
-            <div id="routeFooter" class="route-footer"></div>
-          </div>
         </section>
+
+        <aside class="panel panel--solid demo-sidebar" aria-labelledby="demoRunnerTitle">
+          <div class="demo-sidebar__head">
+            <p class="eyebrow">Presenter controls</p>
+            <h2 id="demoRunnerTitle">Demo stories</h2>
+          </div>
+          <div class="demo-runner" id="demoRunner">
+            <div class="demo-runner__body">
+              <div class="field-row">
+                <select id="demoStorySelect" aria-label="Demo story"></select>
+              </div>
+              <div class="demo-runner__brief">
+                <span class="demo-runner__world">Cumulus Granitus · Fictional industrial automation manufacturer</span>
+                <strong id="demoStoryPersona"></strong>
+                <span id="demoStoryScenario" class="note"></span>
+              </div>
+              <div class="demo-runner__status">
+                <strong id="demoStepTitle">Ready</strong>
+                <span id="demoProgress" class="note">0 of 0</span>
+              </div>
+              <div class="button-row demo-runner__actions">
+                <button type="button" id="demoNextButton">Next</button>
+                <button type="button" id="demoAutoButton" class="primary">Auto</button>
+                <button type="button" id="demoStopButton" disabled>Stop</button>
+              </div>
+            </div>
+          </div>
+        </aside>
       </main>
     </div>
   </body>

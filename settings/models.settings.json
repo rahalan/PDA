@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "routes": [
+    {
+      "id": "copilot",
+      "kind": "copilot",
+      "name": "GitHub Copilot",
+      "enabled": true,
+      "model": "gpt-5-mini",
+      "baseUrl": "https://api.githubcopilot.com/v1",
+      "approvedBaseUrls": ["https://api.githubcopilot.com/v1"],
+      "geography": "Public cloud",
+      "costScore": 0,
+      "discovery": { "kind": "copilot-sdk" },
+      "requiredForDemo": false
+    },
+    {
+      "id": "ollama",
+      "kind": "ollama",
+      "name": "Ollama",
+      "enabled": true,
+      "model": "qwen2.5:7b",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "approvedBaseUrls": ["http://127.0.0.1:11434/v1"],
+      "geography": "On-premises",
+      "costScore": 0,
+      "discovery": { "kind": "ollama-tags", "url": "http://127.0.0.1:11434/api/tags" },
+      "requiredForDemo": true
+    },
+    {
+      "id": "mistral",
+      "kind": "openai-compatible",
+      "name": "Mistral",
+      "enabled": true,
+      "model": "mistral-small-latest",
+      "baseUrl": "https://api.mistral.ai/v1",
+      "approvedBaseUrls": ["https://api.mistral.ai/v1"],
+      "geography": "region-eu",
+      "costScore": 0,
+      "apiKeySecretName": "mistral-api-key",
+      "discovery": { "kind": "openai-models", "url": "https://api.mistral.ai/v1/models" },
+      "requiredForDemo": false
+    },
+    {
+      "id": "simplellm",
+      "kind": "openai-compatible",
+      "name": "SimpleLLM",
+      "enabled": false,
+      "model": "Llama-3.1-8B-Instruct",
+      "baseUrl": "https://api.simplellm.eu/v1",
+      "approvedBaseUrls": ["https://api.simplellm.eu/v1"],
+      "geography": "region-eu",
+      "costScore": 0,
+      "apiKeySecretName": "simplellm-api-key",
+      "discovery": { "kind": "openai-models", "url": "https://api.simplellm.eu/v1/models" },
+      "requiredForDemo": false
+    }
+  ],
+  "preferences": [
+    { "id": "public", "label": "Public model preference", "baseLevel": "Public", "allowedRouteIds": ["copilot", "mistral", "simplellm", "ollama"], "defaultRouteId": "copilot" },
+    { "id": "internal", "label": "Internal model preference", "baseLevel": "Internal", "allowedRouteIds": ["mistral", "simplellm", "ollama"], "defaultRouteId": "mistral" },
+    { "id": "high", "label": "Highly Confidential model preference", "baseLevel": "Highly Confidential", "allowedRouteIds": ["ollama"], "defaultRouteId": "ollama" }
+  ],
+  "routingPools": [
+    { "id": "eu", "label": "EU route pool", "strategy": "cost", "fallbackEnabled": true, "routeIds": ["simplellm"], "order": ["simplellm"] }
+  ]
+}

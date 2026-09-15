@@ -1,204 +1,165 @@
-# Enterprise Agent Governance
+# Policy Driven Agent
 
-**Trusted sovereign AI agents, built with the GitHub Copilot SDK.**
+Policy Driven Agent is a working demonstration of enterprise governance for AI agents. It shows how an enterprise can retain authority over an agent even when the agent uses different models, invokes tools, crosses business boundaries, and accumulates protected context during a conversation.
 
-## Direction and status
+The application is built with the published GitHub Copilot SDK and runs as a local Node.js service. It is not only a mockup: prompts flow through a real SDK agent session, model and tool requests are evaluated by the governance layer, policy decisions affect execution, and the resulting events appear in a signed compliance ledger.
 
-This repository is a clean start for an enterprise agent governance demo. The [executive feedback](executive%20feedback.md) is the requirements baseline and takes precedence over the previous design. The agent will use the **GitHub Copilot SDK**, not NemoClaw, OpenClaw or OpenShell.
+The governing principle is straightforward:
 
-The approved story has a local demo using the published **GitHub Copilot SDK 1.0.13**. Historical designs are not an active application or compatibility requirement. The requirements below remain the product direction; implementation scope and previously verified local behavior are described in [docs/DEMO.md](docs/DEMO.md).
+> As a conversation acquires more sensitive or restricted context, its protection can increase, but it cannot silently decrease.
 
-## Run the live demo
+Every chat begins Public. The Policy Driven Agent then evaluates what the conversation is asking to use, where the relevant business scope belongs, which model or tool is eligible, and whether a result may be released. The language model does not get to waive enterprise policy. If there is no compliant path, the request is refused.
 
-- **User chat:** <http://127.0.0.1:8110/> — a confidentiality selector, prompt box and conversation, with visible protection state.
-- **Administrator:** <http://127.0.0.1:8110/admin> — policy drafts and publication, model preferences across the three managed-identity routes, tool allowances and demo credential revocation.
-- **Compliance:** <http://127.0.0.1:8110/compliance> — actual signed events, chat timelines, filters, verification and export.
+For a detailed narrative see [docs/PolicyDrivenAgent_Summary.md](docs/PolicyDrivenAgent_Summary.md).
 
-The backend is Node.js with plain HTML/CSS/JavaScript pages. No container or frontend build is required. Model answers come from the real SDK; weather and sales are fictional local services, and sending is dry-run only. Keys are encrypted for the current Windows user, outside the repository.
+## Why policy must follow the conversation
 
-See [model configuration and walkthrough](docs/DEMO.md). The signed ledger is tamper-evident, not immutable storage; participant credentials are issued by the demo authority, not the external model providers. The local UI assumes one trusted workstation operator, not production role-based authentication. Node 22.12 or later is required.
+An enterprise agent conversation is not one fixed transaction. A user may begin with public information, add an internal planning topic, select a named regional execution environment, request a partner service, and later ask for a confidential finance or manufacturing record. Each step can change which models, tools, endpoints, and execution environments are acceptable.
 
-## Deploy to Azure
+Checking an allowlist only when a chat begins is therefore insufficient. The current state must be evaluated again before model egress, before a tool runs, and before a protected result is returned. The demo makes that state explicit and keeps it attached to the chat.
 
-An optional Azure deployment hosts the app on Azure Container Apps with Key Vault–backed
-at-rest encryption for secrets/signing keys (replacing Windows DPAPI), an unused archive container, and an
-Azure OpenAI (AI Foundry) account with three `gpt-4.1-mini` deployments (`global`, `eu`, `onprem`) served by the app's
-managed identity — provisioned with Bicep and Azure Verified Modules,
-and shipped by GitHub Actions that call PowerShell scripts in [scripts/](scripts).
-Cloud behavior is enabled only through environment variables.
+A new chat starts with separate context. An existing chat cannot become less protected merely because a later prompt appears harmless or because a user would prefer a cheaper or more available route.
 
-Cloud mode requires Entra sign-in and application roles. The `global` route is public
-cloud and the `eu` route runs in an EU region (genuine EU residency); the `onprem`
-route is a **simulated** on-premises deployment (a cloud region is not on-premises)
-and is labelled as such in the UI and ledger. Use synthetic data only. The archive has
-no uploader or locked policy; compilation and source tests are not deployment proof.
+## Three governance axes
 
-- [Azure architecture](docs/azure-architecture.md)
-- [Azure deployment guide](docs/azure-deployment-guide.md)
+The current demo tracks three independent governance axes:
 
-## Approved demo story
+1. **Confidentiality** is Public, Internal, or Highly Confidential.
+2. **Execution environment** is Public cloud, a named Restricted Region such as Japan, Korea, EU, Brazil, US, or China, or On-premises.
+3. **Business scope** is a set of partner networks or enterprise organizations.
 
-The approved mockup story is implemented as a simple chat with separate Administrator
-and Compliance pages. Follow [docs/DEMO.md](docs/DEMO.md); the old static mockup is
-not part of this checkout.
+Confidentiality and the base execution environment can move only toward stronger protection. Each named region is an execution-environment definition whose base is Restricted Region. A chat cannot switch laterally from one named regional environment to another; an incompatible request is refused for that turn with `ENVIRONMENT_CONFLICT`. Partner networks and enterprise organizations are append-only and can require a particular execution environment.
 
-## The story: useful agents without surrendering control
+Requesting CISPE can select the EU environment, while a country-specific manufacturing organization can select its configured named environment. These are normal environment requirements, not a separate regional scope hierarchy.
 
-An enterprise agent can read messages, retrieve business data, call tools and choose how to complete a task. That usefulness also makes governance difficult: one conversation can move from public information to confidential records, across tools and model providers, without the user realizing a trust boundary has been crossed.
+Named regional environments are logical policy boundaries in this demo. Japan, Korea, Brazil, US, and China stories execute through local Ollama on the workstation. They demonstrate environment enforcement, not physical inference in those countries.
 
-The goal is an open-source foundation that lets enterprises and their cloud or hosting providers govern that behavior under enterprise-owned policy. Regional and local providers—including the European provider ecosystem represented by [CISPE](https://cispe.cloud/)—can operate the platform without taking sovereignty decisions away from their customers.
+## What the application contains
 
-**The enterprise defines the rules. Providers supply permitted capabilities. The agent operates within those rules, and compliance can inspect the evidence.**
+The browser application has three purpose-specific views.
 
-Azure services can be optional model, tool, identity, key-management or compliance integrations, subject to the same policy checks as other providers. Using the GitHub Copilot SDK does not itself select a compliant model location or establish sovereignty. Fallback is permitted only among routes authorized by the chat's signed policy, protection state, configured pool and valid demo-issued participant credentials.
+### User
 
-Portability across sovereign clouds, enterprise infrastructure and on-premises environments remains a useful ambition. Adaptive Apps and Radius from the earlier proposal are possible future packaging options, not prerequisites for this demo.
+The User view is intentionally a simple chat. Every conversation begins Public, with explicit confidentiality and execution-environment markers above the prompt. Current scope is visible beside those markers, while the policy version is attached to the chat identifier. Each answer carries its own route information, and alerts explain when protection rises or an action is refused.
 
-## What we need to demonstrate
+While Cairn works, an expanded Activity disclosure streams structured events from the real governance, SDK, model-routing, provider, and tool boundaries. Routine steps stay stone gray. The exact event that raises confidentiality or changes the execution environment uses the destination confidentiality color and states both before and after values. When the turn finishes, the disclosure collapses to a one-line action count and duration with a severity marker; it can be reopened and remains attached to the answer after refresh.
 
-One central policy authority governs agents through signed, versioned ODRL policies. Each chat carries confidentiality and sovereignty state that can become more restrictive but never less restrictive. Model calls, tool calls and API destinations must remain permitted by that state. Every chat produces signed compliance evidence.
+It also includes six guided stories. The runner can advance one prompt at a time or run automatically after a bounded preflight. Story success is evaluated from returned governance state and refusal codes rather than from fragile comparisons against model prose.
 
-The enterprise-scale ambition is governance for thousands of agents. The demo must make the governance behavior understandable and verifiable; it must not claim fleet-scale performance merely because a small demonstration works.
+### Administrator
 
-### Three experiences
+The Administrator view manages enterprise policy. It supports:
 
-| Experience | What it shows and controls |
-| --- | --- |
-| **User** | A chat window, initial confidentiality selection, current confidentiality and sovereignty levels, elevation warnings, and understandable answers or refusals. |
-| **Administrator** | An ODRL policy editor, confidentiality and sovereignty matrices, model/tool/API endpoint catalog, policy versions, and controls to publish signed policies to the central directory. |
-| **Compliance officer** | A ledger browser with agent and chat drill-down, filters for agent ID, confidentiality, tool calls and violations, a timeline of protection-state changes, and evidence export. |
+- Signed and versioned policy publication.
+- A constrained ODRL profile with server-side validation.
+- Protection-level and execution-environment vocabulary.
+- Per-level model, tool, and environment allowances.
+- Explicit route configuration for different models.
+- Signed demo credentials that can be inspected and revoked.
 
-The executive feedback calls for a mock UI to communicate this story. Any simulated interaction must be identifiable as simulated. A rendered timeline is not proof of enforcement, a mock credential is not provider acceptance, and a scripted answer is not a live Copilot agent run.
+Published policy versions remain distinct. Each new chat records the active policy version and digest, so a later publication does not rewrite the authority or evidence of an existing conversation.
 
-## Governance requirements
+### Compliance
 
-### 1. Confidentiality follows the conversation
+The Compliance view reads the actual ledger generated by the application. It can filter by agent, chat, confidentiality, execution environment, tool, pre-release outcome, and event type. Selecting a record exposes its details; selecting a chat reconstructs the timeline of classification, elevation, scope, routing, tool, and refusal events.
 
-- The user selects the chat's initial confidentiality level from the levels allowed by enterprise policy.
-- Prompt analysis and tool requirements can automatically elevate that level.
-- Confidentiality can only increase within a chat. A later public question cannot clear an earlier confidential context.
-- All subsequent model and tool calls must satisfy the elevated state, including calls caused by retrieved content.
-- Lower-confidentiality operation requires a genuinely new chat with separate context; confidential history must not be copied into it behind the scenes.
+Ledger verification checks the signed hash chain. Export is limited to the selected chat and contains its records, pinned policy, relevant demo credentials, and a signed manifest of the exported event hashes.
 
-User selection establishes the starting state, not permission to downgrade known source restrictions. Public, Internal and Highly Confidential are useful illustrative labels from the earlier story; the administrator defines the actual levels and their permissions.
+## Models and execution routes
 
-### 2. Sovereignty is a separate, persistent state
+The current route inventory is:
 
-- Enterprise policy defines permitted computation environments, such as public cloud, sovereign cloud, EU-only hosting and on-premises.
-- Prompts and tools can add stronger sovereignty requirements. Once elevated, the chat retains those restrictions for future actions.
-- Confidentiality and sovereignty are evaluated together but remain distinct facts. A confidentiality label is not a country or hosting guarantee.
-- Elevation narrows the permitted execution environments. Geographic and hosting requirements are not always a single ladder: incompatible requirements must produce a refusal, not a silently broadened route.
-- If no permitted model, tool or endpoint is available, the agent explains the refusal without substituting a less protected option.
+- **GitHub Copilot** for Public cloud synthetic work.
+- **Mistral** as an explicitly configured, provider-declared EU route.
+- **SimpleLLM** as an explicitly configured, provider-declared EU route.
+- **Ollama** on loopback for On-premises execution and named-region stories. Highly Confidential and local work routes through it.
 
-### 3. Every tool call is governed
+Route endpoints are fixed by the demo so an administrator cannot convert an approved provider entry into arbitrary egress by editing its host.
 
-A runtime integration inspects each proposed tool request before execution. A weather lookup and a confidential sales database query have different protection requirements even when requested in the same conversation.
+Before model egress, the application evaluates the chat's full state against the pinned policy, route configuration, allowed geography, and signed participant credential. Provider availability does not create permission to send protected context to an ineligible route.
 
-The governed sequence is:
+## Governed tools and synthetic services
 
-1. Resolve the tool identity, requested operation, arguments and API endpoint against the active policy and trusted tool metadata.
-2. Determine whether the request requires confidentiality or sovereignty elevation; record and retain the required state change.
-3. Evaluate the exact action against that effective state. Elevation does not grant permission to a forbidden tool.
-4. Verify the required policy-acceptance credentials and evidence obligations before releasing the call.
-5. Execute only through the permitted path, record the outcome, and retain any additional restrictions discovered in the result before further model or tool use.
+The agent exposes governed custom tools through its SDK session. The catalog contains three generic demo tools and 18 governed fictional services:
 
-The same protection state constrains model requests and API destinations. A confidential tool result must not return to a now-ineligible model simply because that model began the conversation.
+- Six environment-specific exchanges for Japan, Korea, EU, Brazil, US, and China.
+- Three partner-network services for the Industrial Community, CISPE, and the NGO Community.
+- Five office and research services for Procurement, HR, Finance, Engineering, and Research.
+- Four factory operations services for Manufacturing China, Manufacturing Japan, Manufacturing Germany, and Manufacturing US.
 
-### 4. Central policies are signed, versioned and enforceable
+The generic tools are a fictional weather lookup, a confidential sales lookup, and a public-send dry run. Tool invocations use the real governed agent path, but all business results are synthetic. Public send never delivers a message.
 
-The central directory stores enterprise-wide policies defining:
+Tool minimum requirements cover every supported base cell. Counts are balanced between two and four tools per populated cell; Internal/Public cloud and Highly Confidential/Public cloud remain empty because those combinations are not policy-supported.
 
-- Confidentiality levels and sovereignty levels.
-- Allowed models, tools and API endpoints for each applicable policy combination.
-- Permissions, prohibitions and obligations expressed in **ODRL**.
-- Policy versions and the signing information needed to verify bundles.
+| Minimum confidentiality | Public cloud | Restricted Region base | On-premises |
+| --- | ---: | ---: | ---: |
+| Public | 3 | 4 | 2 |
+| Internal | 0 | 4 | 4 |
+| Highly Confidential | 0 | 0 | 4 |
 
-Administrators publish signed bundles. Agents fetch and verify their assigned bundle at startup and provide evidence of the specific signed version in use. Decisions and chat records bind to that version; merely displaying a version string is insufficient.
+A tool request can raise confidentiality, execution posture, or scope before data is released. If the current model is no longer eligible after that change, the result is withheld from that model and the application restarts through an authorized route. If the action itself is forbidden, it is denied before release and the reason is recorded.
 
-Signing, logging and other mandatory obligations must be enforced by the governed runtime integration. Unsupported mandatory policy terms or an unverifiable bundle must not become best-effort permissions. The ODRL profile, evaluator and distribution technology remain implementation choices to resolve against these requirements.
+## Six global demonstration stories
 
-### 5. Models and tools provide verifiable policy acceptance
+Every guided story starts in a new Public chat and accumulates scope from left to right:
 
-Models and tools must supply verifiable credentials recording that their responsible service or provider:
+1. **Japan manufacturing** selects Japan, adds the Industrial Community, and moves On-premises for Highly Confidential Manufacturing Japan work.
+2. **Korea logistics and HR** selects Korea, refuses an attempted switch to Japan, then moves On-premises for Highly Confidential HR work.
+3. **EU, CISPE, and Finance** selects EU from CISPE and later raises confidentiality for Finance work without becoming Highly Confidential.
+4. **Brazil NGO procurement** starts in Brazil, moves to On-premises for NGO and Procurement work, and ends Internal.
+5. **US manufacturing boundary** combines the US environment and Industrial Community, refuses a switch to China, then moves On-premises for Highly Confidential Manufacturing US work.
+6. **China research and egress** accumulates China, Manufacturing China, and Research, then blocks a public-send attempt before protected information leaves the governed path.
 
-- Saw the policy.
-- Accepted the policy.
-- Commits to behave according to it.
+Only one story centers on the EU environment. Together, the six stories demonstrate a global policy model, compatible business-scope accumulation, boundary-selected environments, protected tool use, precise environment conflicts, and pre-release egress refusal.
 
-The compliance record retains these credentials and their binding to the participant and signed policy version. Credential verification must account for issuer trust, validity and status.
+## Evidence and honest boundaries
 
-**Acceptance is a signed commitment, not proof of actual behavior.** Runtime enforcement and observed evidence remain necessary. An agent-generated statement, an API key or a gateway signing on its own behalf cannot be presented as an external provider's acceptance. Where a provider cannot supply the required credential, that gap must remain visible and the credential-dependent action must be withheld. Synthetic participants may demonstrate the protocol only when clearly labelled.
+The application records signed events for prompts, classifications, protection changes, scope changes, conflicts, model authorization, provider egress, SDK activity, tool requests, tool outcomes, withheld results, denials, policy publication, and credential status. This makes it possible to ask what was attempted, which policy applied, what state was in force, which route was authorized, and whether a result was released or blocked.
 
-### 6. Every chat produces compliance evidence
+The chat Activity disclosure is a sanitized user-facing execution trace, not hidden model chain-of-thought. It exposes concise policy rationale and actual action boundaries without model context, credentials, protected argument values, raw protected results, tokens, or internal paths:
 
-The required compliance ledger is signed and append-only, with an immutable record for each chat and a reconstructable sequence of events containing:
+- All business records, services, partner networks, and organizations are fictional.
+- Tool calls exercise the application path, but their returned business data is synthetic.
+- Public sending is a dry run with `delivered: false`.
+- Participant credentials are issued and signed by the demo authority, not by external providers.
+- Provider and regional metadata is declared and marked as not independently attested.
+- Local Ollama simulates named regional environments; it is not in-country hosting.
+- The ledger is signed and tamper-evident, not production immutable storage.
+- The local UI assumes a trusted workstation operator and is not an enterprise identity or role-based access implementation.
 
-- Agent and chat identity, event ordering and correlation.
-- Prompts and classification analysis.
-- The trigger for each confidentiality or sovereignty elevation, with before/after state.
-- Tool requests, actual calls, outcomes and refusals.
-- Effective sovereignty level and selected model/tool/API endpoint.
-- The signed policy version used for each decision.
-- Policy-acceptance credentials from tools and models.
-- Policy decisions, obligation outcomes and detected violations or suspicious attempts.
+These limits are visible by design. The demo establishes an executable governance pattern; it does not turn synthetic evidence into a production assurance claim.
 
-Compliance officers must be able to audit a specific chat or agent and export verifiable records to compliance systems. Prompt-bearing logs are themselves sensitive data and require appropriate access, residency and retention controls; signing does not make their contents public.
+## Run the demo
 
-An application-level hash chain can demonstrate tamper detection. It does not, on its own, prove storage immutability against a privileged host operator. The implementation must state which immutability guarantees its storage and independent verification actually provide.
+From PowerShell in the repository root:
 
-## Architecture responsibilities
+```powershell
+.\startdemo.ps1
+```
 
-The [GitHub Copilot SDK](https://github.com/github/copilot-sdk) supplies the agent runtime integration and agent loop. The enterprise governance layer owns authoritative policy, protection state, authorization and compliance evidence. Model reasoning and tool output cannot rewrite that authority.
+The script starts local Ollama and the Node.js server. The server loads the governance layer and SDK agent.
 
-| Component | Responsibility |
-| --- | --- |
-| Central policy directory and publisher | Store, version and distribute signed ODRL policy bundles. |
-| Copilot SDK agent host | Bind agent/chat identity, load verified policy, run the real agent loop and integrate governed execution. |
-| Chat protection authority | Maintain initial confidentiality, inferred requirements and monotonic confidentiality/sovereignty state. |
-| Policy decision point | Decide whether a model, tool or endpoint action is permitted and identify required obligations. |
-| Policy enforcement points | Enforce those decisions before consequential execution or data release; a refusal cannot become an unmanaged retry. |
-| Credential verification | Validate and retain participant policy-acceptance credentials for the policy version in use. |
-| Compliance ledger and exporter | Record signed events, support verification and expose authorized audit/export views. |
+Open:
 
-This preserves the useful distinction from the original proposal: **a policy decision point decides; a policy enforcement point makes the decision effective.** Policy, verified identity claims, the requested action and existing evidence are separate inputs. Prompt instructions alone are not an enforcement boundary.
+- **User:** <http://127.0.0.1:8110/>
+- **Administrator:** <http://127.0.0.1:8110/admin>
+- **Compliance:** <http://127.0.0.1:8110/compliance>
 
-SDK callbacks and tool permissions are integration mechanisms, not automatic proof of complete mediation. Built-in tools, model traffic, subprocesses, network access and credentials must be assessed when defining the actual enforcement boundary. The old OpenShell security guarantees do not transfer merely by replacing its runtime name with Copilot SDK.
+For configuration, the complete six-story walkthrough, expected state transitions, and operational limits, see [docs/DEMO.md](docs/DEMO.md).
 
-## Demonstration storyline
+Stop the demo with:
 
-**Cumulus Granitus — your hardened cloud** remains the fictional provider used to tell the story. It hosts an enterprise's governed agent service; the enterprise administrator owns the policy and the compliance officer independently inspects the record. All business records and organizations used in the demo are fictional.
+```powershell
+.\stopdemo.ps1
+```
 
-The following is an ordered walkthrough of the new requirements, not the previous six-slice plan. Protection mappings are illustrative until authored in the demo policy.
+## Repository map
 
-1. **Publish the rules.** The administrator configures confidentiality and sovereignty matrices, approved models/tools/endpoints and obligations, then publishes a signed ODRL bundle to the central directory.
-2. **Show which rules the agent accepted.** The agent starts with a verified bundle. Its identity and exact policy version are visible, alongside the policy-acceptance credentials of participating tools and model services.
-3. **Start an ordinary chat.** The user selects Public confidentiality and requests a low-risk weather lookup. The agent uses a permitted tool and model; the current protection state is visible.
-4. **Cross into enterprise data.** The user asks about a fictional confidential sales record or contract. Before protected access, the chat elevates to the confidentiality and sovereignty required by that source—for example, Highly Confidential and on-premises. The user sees what triggered the change.
-5. **Show that protection sticks.** The user follows up with an apparently public question. The chat retains its elevated state and uses only models and tools still permitted at that state.
-6. **Demonstrate a meaningful refusal.** A request to send the confidential material through a public API is blocked before release. The user sees the reason; compliance sees the attempted action, policy and refusal. If no compliant model exists, the agent refuses rather than choosing an unapproved provider.
-7. **Begin a separate low-protection chat.** A fresh Public chat can use the public tool without inheriting confidential context from the previous chat. The protected chat and its audit history remain unchanged.
-8. **Publish a policy revision.** The administrator changes an allowance and publishes a newly signed version. A newly started agent loads that version; previous evidence continues to identify the version used at the time. Existing-chat update semantics must be explicit, never a silent downgrade.
-9. **Audit the complete story.** The compliance officer filters by agent, confidentiality, tool and violation, reviews the elevation timeline, inspects credentials and policy versions, and exports the selected chat's verifiable record.
-
-These beats carry forward the earlier demo's strongest ideas: fictional enterprise documents, policy-controlled model/tool access, understandable refusals, a policy change without rewriting the agent, and independently inspectable evidence. Cheapest-model selection, a particular public tool provider and the old UI layout are not acceptance requirements of the new feedback.
-
-## Design risks to resolve
-
-| Risk from executive review | Design question |
-| --- | --- |
-| Dual-matrix complexity | How are confidentiality and sovereignty composed without contradictory rules or an unmanageable cross-product? |
-| Per-call policy latency | How can evaluation remain responsive without stale authorization or skipping required checks? |
-| Central policy-store compromise | How are publisher authority, signing keys, version integrity and distribution access protected? |
-| ODRL interoperability | Which constrained enterprise-agent profile expresses the required permissions, prohibitions and enforceable obligations? |
-| Credential overhead | Can credentials be reused or batched per participant/policy version while still checking validity and status for each governed use? |
-| Ledger growth | How are indexing, export, retention and archival handled at fleet scale without silently rewriting committed history? |
-
-Additional implementation decisions include trusted classification, SDK model/egress integration, isolated new-chat state, policy refresh behavior, credential issuer participation and the evidence needed to claim immutability. Resolve these in the new design rather than inheriting unexamined choices from the archive.
-
-## Repository guide
-
-- [Executive feedback](executive%20feedback.md): authoritative requirements, preserved as supplied.
-- [Working agreements](AGENTS.md): current development constraints for the clean start.
-- [License](LICENSE): retained project license.
-
-The active backend is [server.mjs](server.mjs), with governance, storage and SDK integration under app/ and separate browser views under public/. [docs/DEMO.md](docs/DEMO.md) records the walkthrough and limitations. Archived code is not imported or built.
+- [server.mjs](server.mjs) hosts the loopback API, static application, streaming chat endpoint, ledger APIs, and selected-chat export.
+- [app/agent.mjs](app/agent.mjs) creates SDK sessions, constrains available capabilities, mediates model traffic, and runs governed tools.
+- [app/governance.mjs](app/governance.mjs) owns policy, conversation state, route eligibility, credentials, elevation, scope, and refusals.
+- [app/catalog.mjs](app/catalog.mjs) defines the global scope vocabulary and synthetic service catalog.
+- [app/storage.mjs](app/storage.mjs) owns external application state, protected secrets, signed records, and ledger verification.
+- [public](public) contains the User, Administrator, and Compliance experiences.
+- [docs/DEMO.md](docs/DEMO.md) is the operator walkthrough.
+- [docs/PolicyDrivenAgent_Summary.md](docs/PolicyDrivenAgent_Summary.md) is the current explanatory project summary.

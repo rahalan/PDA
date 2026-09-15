@@ -11,6 +11,7 @@ const PUBLIC_KEY_FILE = 'vault/signing-key.public';
 const LEDGER_FILE = 'ledger.jsonl';
 const CHECKPOINT_FILE = 'ledger.checkpoint.json';
 const SECRET_MAX_LENGTH = 8192;
+const MAX_LEDGER_RECORDS = 20000;
 const MODULE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 function structuredCloneFallback(value) {
@@ -251,11 +252,7 @@ export class Store {
 
   append(kind, data = {}) {
     this._assertHealthy();
-    if (this._ledger.length >= 20000) {
-      const error = new Error('Ledger limit reached');
-      this._poison(error);
-      throw error;
-    }
+    this.assertLedgerCapacity(1);
 
     const previousHash = this._ledger.at(-1)?.hash ?? 'GENESIS';
     const base = {
@@ -293,6 +290,27 @@ export class Store {
   records() {
     this._assertHealthy();
     return deepClone(this._ledger);
+  }
+
+  capacity() {
+    this._assertHealthy();
+    return {
+      used: this._ledger.length,
+      limit: MAX_LEDGER_RECORDS,
+      remaining: Math.max(0, MAX_LEDGER_RECORDS - this._ledger.length),
+    };
+  }
+
+  assertLedgerCapacity(required = 1) {
+    this._assertHealthy();
+    const count = Number(required);
+    if (!Number.isInteger(count) || count < 0) throw new Error('Invalid ledger capacity request');
+    if (this._ledger.length + count > MAX_LEDGER_RECORDS) {
+      const error = new Error('Ledger limit reached');
+      error.code = 'ledger_capacity';
+      throw error;
+    }
+    return this.capacity();
   }
 
   verifyLedger() {

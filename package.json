@@ -9,7 +9,7 @@
   },
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test --test-timeout=15000 tests/regression.test.mjs"
+    "test": "node --test"
   },
   "dependencies": {
     "@azure/identity": "4.5.0",

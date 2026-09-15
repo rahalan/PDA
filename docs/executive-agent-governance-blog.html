@@ -1,7 +1,6 @@
 <!DOCTYPE html><html><head>
       <title>executive-agent-governance-blog</title>
       <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
       
       
       <style>
@@ -54,7 +53,7 @@
 <h2 id="a-simple-rule-for-a-complex-conversation">A simple rule for a complex conversation </h2>
 <p>The core user promise is straightforward: <strong>as a conversation becomes more sensitive, its protection can increase, but it cannot silently decrease.</strong></p>
 <p>A user begins a chat at a confidentiality level allowed by company policy. If a later prompt or tool request touches protected information, the chat is elevated before that information is released. From that point forward, every model, tool and endpoint must remain eligible for the higher protection level. Returning to lower-confidentiality operation requires a genuinely new chat with separate context.</p>
-<p>Sovereignty is managed in parallel. Policy may require public cloud, sovereign cloud, EU-only hosting or on-premises execution. Once a conversation acquires a stronger location or hosting requirement, subsequent processing must respect it. If no compliant route is available, the agent refuses rather than quietly selecting a less protected provider.</p>
+<p>Execution environment is managed in parallel. Policy may require Public cloud, a named environment based on Restricted Region, or On-premises execution. Once a conversation acquires a stronger environment requirement, subsequent processing must respect it. If no compliant route is available, the agent refuses rather than quietly selecting a less protected provider.</p>
 <p>Consider a practical example:</p>
 <ol>
 <li>An employee starts a Public chat and asks for the weather in Brussels. A permitted public model and weather tool can answer.</li>
@@ -79,7 +78,7 @@
 <p>This separation matters. The policy decision point determines what is allowed. Enforcement points make that decision effective before data or actions cross a boundary. Model reasoning and prompt instructions cannot override either one.</p>
 <h2 id="evidence-that-executives-administrators-and-auditors-can-use">Evidence that executives, administrators and auditors can use </h2>
 <p>The project is designed around three distinct experiences.</p>
-<p><strong>Employees</strong> get a familiar chat interface. They select the initial confidentiality level, see the current protection state, receive a clear warning when it rises and get an understandable explanation when an action is refused.</p>
+<p><strong>Employees</strong> get a familiar chat interface. Every chat begins Public; explicit confidentiality and environment markers show the current protection state, warnings call out increases and refusals include understandable explanations.</p>
 <p><strong>Administrators</strong> manage policy rather than editing every agent. They can control confidentiality and sovereignty rules, approved models, tools and endpoints, publish signed revisions and see which versions are active.</p>
 <p><strong>Compliance officers</strong> inspect the actual decision record. They can filter by agent, chat, confidentiality, tool call or violation; review the timeline of state changes; inspect policy and participant evidence; and export records to compliance systems.</p>
 <p>Each chat produces a signed, append-only sequence of events covering prompts, classification, elevation triggers, requested and executed tool calls, refusals, selected routes, policy versions and credential checks. This makes important questions answerable: What did the agent attempt? Which rule applied? Where was processing permitted? Why did the system allow or block the action?</p>

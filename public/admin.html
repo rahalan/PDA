@@ -2,15 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Cumulus Granitus · Admin</title>
     <script>
       (() => {
-        const param = new URLSearchParams(window.location.search).get("theme");
+        const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
         const theme =
-          (param === "dark" || param === "light")
-            ? param
-            : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+          param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
         document.documentElement.setAttribute("data-theme", theme);
       })();
     </script>
@@ -24,7 +21,7 @@
           <div class="brand-mark">CG</div>
           <div>
             <div class="brand-name">Cumulus Granitus</div>
-            <div class="brand-note">Demo · fictional tools</div>
+            <div class="brand-note">Hardened clouds · governed agents</div>
           </div>
         </div>
         <nav class="toplinks" aria-label="Views">
@@ -53,9 +50,21 @@
 
           <div class="panel-body">
             <section class="tab-panel is-active" data-tab-panel="policies">
+              <div class="section section--authorization">
+                <div class="section-row section-row--space-between">
+                  <div>
+                    <p class="eyebrow">Effective draft</p>
+                    <h2>Authorization map</h2>
+                    <p class="note">Trace each protection level to the environments, model routes, and tools granted by this draft. Runtime constraints remain visible on each resource.</p>
+                  </div>
+                  <div id="authorizationMapStatus" class="badge-row" aria-live="polite"></div>
+                </div>
+                <div id="authorizationMap" class="authorization-map"></div>
+              </div>
+
               <div class="section">
                 <h2>Policy draft</h2>
-                <p class="note">Edit the policy profile, vocabulary definitions, and allowlists here. Raw ODRL is saved separately and the preview comes from the backend draft.</p>
+                <p class="note">Edit vocabulary definitions and choose grants from the configured resource catalog. Raw ODRL is saved separately and the preview comes from the backend draft.</p>
                 <div class="field-grid">
                   <label class="field-row" for="policyName">
                     <span class="field-label">Policy name</span>
@@ -78,21 +87,19 @@
                           <th>Stable id</th>
                           <th>Name</th>
                           <th>Base level</th>
-                          <th>Allowed models</th>
-                          <th>Allowed tools</th>
-                          <th>Allowed environments</th>
                           <th>Actions</th>
                         </tr>
                       </thead>
                       <tbody id="policyMatrixRows"></tbody>
                     </table>
+                    <div id="policyGrantEditors" class="grant-editors"></div>
                   </div>
 
                   <div class="help-box">
                     <div class="section-row section-row--space-between">
                       <div>
                         <div class="field-label">Execution environments</div>
-                        <div class="field-note">Aliases can inherit from a base environment, but they are still just policy labels. The original three rows cannot be deleted.</div>
+                        <div class="field-note">Named regions inherit the Restricted Region base environment. Public cloud, Restricted Region, and On-premises are the three fixed baselines.</div>
                       </div>
                       <div class="button-row">
                         <button type="button" id="addEnvironmentButton">Add environment</button>
@@ -109,6 +116,13 @@
                       </thead>
                       <tbody id="policyEnvironmentRows"></tbody>
                     </table>
+                  </div>
+
+                  <div class="help-box">
+                    <div class="field-label">Business boundaries</div>
+                    <div class="field-note">Define partner networks and enterprise organizations, then select the execution environment each boundary requires.</div>
+                    <div id="scopeDefinitionGroups" class="scope-groups"></div>
+                    <div id="scopePathPreview" class="scope-preview"></div>
                   </div>
 
                   <details class="details">
@@ -156,9 +170,18 @@
             </section>
 
             <section class="tab-panel" data-tab-panel="models">
+              <div class="section section--resource-summary">
+                <div>
+                  <p class="eyebrow">Policy coverage</p>
+                  <h2>Governed resource inventory</h2>
+                  <p class="note">Review which draft protection levels authorize each configured route and tool. A policy grant does not override route availability, execution-environment, or scope checks.</p>
+                </div>
+                <div id="resourcePolicySummary" class="resource-policy-summary"></div>
+              </div>
+
               <div class="section">
-                <h2>Route settings</h2>
-                <p class="note">All three routes are Azure OpenAI / AI Foundry deployments on one account, authenticated with the app's managed identity. The Global route is public cloud; the EU route runs in an EU region (Sweden Central) for genuine EU residency; the On-premises route is simulated, because a cloud region is not on-premises. Residency is demonstrated, not independently attested.</p>
+                <h2>Model routes</h2>
+                <p class="note">Copilot uses Public cloud, Mistral and SimpleLLM declare the EU environment, and Ollama is On-premises. Provider locations are not independently attested by this demo.</p>
                 <div id="routeSettings" class="stack"></div>
               </div>
 
@@ -171,7 +194,7 @@
             <section class="tab-panel" data-tab-panel="credentials">
               <div class="section">
                 <h2>Participant credentials</h2>
-                <p class="note">These are signed demo commitments for the policy version in force. They are not provider attestations.</p>
+                <p class="note">These locally signed demo credentials record policy commitments; they are not external provider attestations or proof of participant behavior. Expand Credential details to inspect the complete signed record.</p>
                 <div id="credentialList" class="list"></div>
               </div>
             </section>

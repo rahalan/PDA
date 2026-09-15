@@ -2,7 +2,6 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Cumulus Granitus · Compliance</title>
     <script>
       (() => {
@@ -24,7 +23,7 @@
           <div class="brand-mark">CG</div>
           <div>
             <div class="brand-name">Cumulus Granitus</div>
-            <div class="brand-note">Demo · fictional tools</div>
+            <div class="brand-note">Hardened clouds · governed agents</div>
           </div>
         </div>
         <nav class="toplinks" aria-label="Views">
@@ -64,6 +63,14 @@
                 <select id="filterTool"></select>
               </label>
               <label class="field-row">
+                <span class="small-label">Environment</span>
+                <select id="filterEnvironment"></select>
+              </label>
+              <label class="field-row">
+                <span class="small-label">Pre-release</span>
+                <select id="filterRelease"></select>
+              </label>
+              <label class="field-row">
                 <span class="small-label">Event type</span>
                 <select id="filterKind"></select>
               </label>
@@ -89,7 +96,10 @@
                       <th>Chat</th>
                       <th>Agent</th>
                       <th>Level</th>
+                      <th>Environment</th>
+                      <th>Scope</th>
                       <th>Tool</th>
+                      <th>Pre-release</th>
                       <th>Outcome</th>
                     </tr>
                   </thead>

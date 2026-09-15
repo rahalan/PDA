@@ -1,3 +1,3 @@
 import { mountChatPage } from "./common.js";
 
-mountChatPage();
+export const chatController = mountChatPage();

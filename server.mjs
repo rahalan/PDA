@@ -3,31 +3,13 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 
-import { AgentRunner } from './app/agent.mjs';
-import { ENVIRONMENTS, LEVELS, TOOLS, Governance } from './app/governance.mjs';
-import { Store, acquireStateLockAsync } from './app/storage.mjs';
-import { createProtector } from './app/protector.mjs';
-import { initTelemetry } from './app/telemetry.mjs';
-import { canAccess, createAuthenticator } from './app/auth.mjs';
+import { AgentRunner, LEDGER_RECORDS_PER_TURN } from './app/agent.mjs';
+import { TOOLS, Governance } from './app/governance.mjs';
+import { DEPLOYMENT_SETTINGS } from './app/deployment-settings.mjs';
+import { Store } from './app/storage.mjs';
 
-// Remote hosting (e.g. Azure Container Apps) is opt-in via PDA_ALLOW_REMOTE=1.
-// When unset the server keeps its original loopback-only behaviour unchanged.
-const ALLOW_REMOTE = process.env.PDA_ALLOW_REMOTE === '1';
-const HOST = ALLOW_REMOTE ? (process.env.PDA_BIND_HOST || '0.0.0.0') : '127.0.0.1';
-const PORT = Number(process.env.PORT || process.env.PDA_PORT || 8110);
-const PUBLIC_SCHEME = (process.env.PDA_PUBLIC_SCHEME || (ALLOW_REMOTE ? 'https' : 'http')).toLowerCase();
-// Loopback names are always allowed so the in-process SDK model proxy keeps working.
-// Extra public hostnames (the Container Apps FQDN) are added via PDA_ALLOWED_HOSTS.
-const ALLOWED_HOSTS = new Set([
-  `127.0.0.1:${PORT}`,
-  `localhost:${PORT}`,
-  ...(PORT === 80 || PORT === 443 ? ['127.0.0.1', 'localhost'] : []),
-  ...String(process.env.PDA_ALLOWED_HOSTS || '')
-    .split(',')
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean),
-]);
-const COOKIE_FLAGS = `HttpOnly; SameSite=Strict; Path=/${PUBLIC_SCHEME === 'https' ? '; Secure' : ''}`;
+const HOST = '127.0.0.1';
+const PORT = 8110;
 const CAPABILITY_COOKIE = 'cg_operator_capability';
 const MAX_JSON_BYTES = 64 * 1024;
 const PROJECT_ROOT = process.cwd();
@@ -36,6 +18,7 @@ const STATE_DIR = resolveStateDir();
 const STATIC_FILES = new Map([
   ['/styles.css', path.join(PROJECT_ROOT, 'public', 'styles.css')],
   ['/common.js', path.join(PROJECT_ROOT, 'public', 'common.js')],
+  ['/demo-stories.js', path.join(PROJECT_ROOT, 'public', 'demo-stories.js')],
   ['/chat.js', path.join(PROJECT_ROOT, 'public', 'chat.js')],
   ['/admin.js', path.join(PROJECT_ROOT, 'public', 'admin.js')],
   ['/compliance.js', path.join(PROJECT_ROOT, 'public', 'compliance.js')],
@@ -52,37 +35,16 @@ const HTML_FILES = new Map([
   ['/compliance.html', path.join(PROJECT_ROOT, 'public', 'compliance.html')],
 ]);
 
-ensureLoopbackPort();
-const authenticate = await createAuthenticator();
-const telemetry = await initTelemetry();
-// State (the single-writer lock, store, governance and agent) is initialised after the HTTP server
-// is listening, so /healthz keeps answering while we wait for a previous writer's lock to release.
-// Blocking here instead would freeze the event loop and fail the platform health probe.
-let releaseStateLock = () => {};
-let store = null;
-let CAPABILITY_SECRET = null;
-let governance = null;
-let runner = null;
-let ready = false;
-
-async function initState() {
-  releaseStateLock = await acquireStateLockAsync(STATE_DIR);
-  process.once('exit', () => releaseStateLock());
-  store = new Store(STATE_DIR, { protector: await createProtector(STATE_DIR), onAppend: telemetry.onLedgerAppend });
-  const cookieSigningKey = store.getSecret('operator-cookie-secret') || crypto.randomBytes(32).toString('hex');
-  if (!store.secretPresent('operator-cookie-secret')) store.setSecret('operator-cookie-secret', cookieSigningKey);
-  CAPABILITY_SECRET = Buffer.from(cookieSigningKey, 'hex');
-  governance = new Governance(store);
-  runner = new AgentRunner(governance, store);
-  ready = true;
-}
+const store = new Store(STATE_DIR);
+const cookieSigningKey = store.getSecret('operator-cookie-secret') || crypto.randomBytes(32).toString('hex');
+if (!store.secretPresent('operator-cookie-secret')) store.setSecret('operator-cookie-secret', cookieSigningKey);
+const CAPABILITY_SECRET = Buffer.from(cookieSigningKey, 'hex');
+const governance = new Governance(store);
+const runner = new AgentRunner(governance, store);
 
 let activeTurn = null;
 
 function resolveStateDir() {
-  if (process.env.PDA_STATE_DIR) {
-    return path.resolve(process.env.PDA_STATE_DIR);
-  }
   const localAppData = process.env.LOCALAPPDATA;
   if (!localAppData) {
     throw new Error('LOCALAPPDATA is required to locate the demo state directory');
@@ -91,12 +53,6 @@ function resolveStateDir() {
 }
 
 function ensureLoopbackPort() {
-  if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535 || (!ALLOW_REMOTE && PORT !== 8110)) {
-    throw new Error('Invalid port; local demo mode requires port 8110.');
-  }
-  if (!ALLOW_REMOTE && process.env.PDA_BIND_HOST && process.env.PDA_BIND_HOST !== '127.0.0.1') {
-    throw new Error('Remote binding requires PDA_ALLOW_REMOTE=1.');
-  }
   for (const envName of ['PORT', 'PDA_PORT']) {
     const value = process.env[envName];
     if (value && Number(value) !== PORT) {
@@ -173,7 +129,7 @@ function hostHeader(req) {
 
 function assertAllowedHost(req) {
   const host = hostHeader(req);
-  if (!ALLOWED_HOSTS.has(host)) {
+  if (host !== `${HOST}:${PORT}` && host !== `localhost:${PORT}`) {
     throw new Error(`Unexpected Host header: ${host || '<missing>'}`);
   }
 }
@@ -181,7 +137,7 @@ function assertAllowedHost(req) {
 function assertSameOrigin(req) {
   const host = hostHeader(req);
   const origin = String(req.headers.origin || '');
-  if (!origin || origin !== `${PUBLIC_SCHEME}://${host}`) {
+  if (!origin || origin !== `http://${host}`) {
     throw new Error('Origin mismatch');
   }
   const fetchSite = String(req.headers['sec-fetch-site'] || '').toLowerCase();
@@ -287,11 +243,47 @@ function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
 
+function sanitizedText(value, limit) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  return text.slice(0, limit);
+}
+
+function sanitizeActivity(activity) {
+  if (!activity || typeof activity !== 'object') return null;
+  const statuses = new Set(['running', 'complete', 'failed', 'stopped']);
+  const state = value => ({ level: sanitizedText(value?.level, 80), environment: sanitizedText(value?.environment, 80) });
+  const transition = activity.transition && typeof activity.transition === 'object' ? {
+    from: state(activity.transition.from),
+    to: state(activity.transition.to),
+    confidentialityChanged: activity.transition.confidentialityChanged === true,
+    environmentChanged: activity.transition.environmentChanged === true,
+  } : null;
+  return {
+    id: sanitizedText(activity.id, 80),
+    kind: sanitizedText(activity.kind, 40),
+    title: sanitizedText(activity.title, 120),
+    ...(activity.detail ? { detail: sanitizedText(activity.detail, 320) } : {}),
+    status: statuses.has(activity.status) ? activity.status : 'complete',
+    at: sanitizedText(activity.at, 40),
+    ...(activity.completedAt ? { completedAt: sanitizedText(activity.completedAt, 40) } : {}),
+    ...(Number.isFinite(activity.durationMs) ? { durationMs: Math.max(0, Math.min(activity.durationMs, 300_000)) } : {}),
+    level: sanitizedText(activity.level, 80),
+    environment: sanitizedText(activity.environment, 80),
+    ...(transition ? { transition } : {}),
+  };
+}
+
 function sanitizeChat(chat) {
   if (!chat) {
     return null;
   }
   const { ownerHash, ...rest } = clone(chat);
+  if (Array.isArray(rest.messages)) {
+    rest.messages = rest.messages.map(message => ({
+      ...message,
+      ...(Array.isArray(message.activity) ? { activity: message.activity.map(sanitizeActivity).filter(Boolean) } : {}),
+    }));
+  }
   return rest;
 }
 
@@ -300,6 +292,7 @@ function sanitizeStreamEvent(event) {
   if (next && typeof next === 'object' && next.chat) {
     next.chat = sanitizeChat(next.chat);
   }
+  if (next?.type === 'activity') next.activity = sanitizeActivity(next.activity);
   return next;
 }
 
@@ -324,7 +317,21 @@ function apiState() {
     levels: governance.levels(),
     environments: governance.environments(),
     vocabulary: governance.vocabulary(),
+    deployment: {
+      policy: {
+        initialLevelId: DEPLOYMENT_SETTINGS.policy.initialLevelId,
+        initialEnvironmentByBaseLevel: clone(DEPLOYMENT_SETTINGS.policy.initialEnvironmentByBaseLevel),
+        baselineLevelIds: [...DEPLOYMENT_SETTINGS.policy.baselineLevelIds],
+        baselineEnvironmentIds: [...DEPLOYMENT_SETTINGS.policy.baselineEnvironmentIds],
+      },
+      agents: DEPLOYMENT_SETTINGS.agents.agents.map(agent => ({ id: agent.id, name: agent.name })),
+      defaultAgentId: DEPLOYMENT_SETTINGS.agents.defaultAgentId,
+    },
     status: sanitizeStatus(),
+    capacity: {
+      chats: governance.capacity(),
+      ledger: store.capacity(),
+    },
   };
 }
 
@@ -381,7 +388,7 @@ function extractInlineScriptHashes(html) {
   const scriptRe = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi;
   let match;
   while ((match = scriptRe.exec(html))) {
-    const script = match[1];
+    const script = match[1].replace(/\r\n?/g, '\n');
     if (!script) {
       continue;
     }
@@ -405,7 +412,7 @@ function buildContentSecurityPolicy(html) {
   ].join('; ');
 }
 
-function setSecurityHeaders(res, html) {
+function setSecurityHeaders(res, filePath, html) {
   res.setHeader('content-security-policy', buildContentSecurityPolicy(html));
   res.setHeader('cache-control', 'no-store');
   res.setHeader('x-content-type-options', 'nosniff');
@@ -415,13 +422,13 @@ function setSecurityHeaders(res, html) {
 function serveFile(res, filePath, { setCookieValue = null, html = false } = {}) {
   const body = fs.readFileSync(filePath);
   if (html) {
-    setSecurityHeaders(res, body.toString('utf8'));
+    setSecurityHeaders(res, filePath, body.toString('utf8'));
   } else {
     res.setHeader('cache-control', 'no-store');
     res.setHeader('x-content-type-options', 'nosniff');
   }
   if (setCookieValue) {
-    res.setHeader('set-cookie', `${CAPABILITY_COOKIE}=${encodeURIComponent(setCookieValue)}; ${COOKIE_FLAGS}`);
+    res.setHeader('set-cookie', `${CAPABILITY_COOKIE}=${encodeURIComponent(setCookieValue)}; HttpOnly; SameSite=Strict; Path=/`);
   }
   res.writeHead(200, { 'content-type': contentTypeFor(filePath) });
   res.end(body);
@@ -433,7 +440,7 @@ function setPageCookieIfNeeded(req, res) {
     return capability;
   }
   const minted = mintCapability();
-  res.setHeader('set-cookie', `${CAPABILITY_COOKIE}=${encodeURIComponent(minted.cookieValue)}; ${COOKIE_FLAGS}`);
+  res.setHeader('set-cookie', `${CAPABILITY_COOKIE}=${encodeURIComponent(minted.cookieValue)}; HttpOnly; SameSite=Strict; Path=/`);
   return minted;
 }
 
@@ -461,9 +468,7 @@ async function handleChatCreate(req, res, capability) {
     sendJson(res, parsed.status, { error: parsed.error });
     return;
   }
-  const body = parsed.value || {};
-  const level = String(body.level ?? body.initialLevel ?? 'Public');
-  const chat = governance.newChat(level);
+  const chat = governance.newChat();
   chat.ownerHash = capability.ownerHash;
   chat.busy = false;
   governance.updateChat(chat);
@@ -505,6 +510,13 @@ async function handleChatMessage(req, res, capability, chatId) {
   }
   if (prompt.length > 8000) {
     sendJson(res, 413, { error: 'prompt_too_large' });
+    return;
+  }
+
+  try {
+    store.assertLedgerCapacity(LEDGER_RECORDS_PER_TURN);
+  } catch (error) {
+    sendJson(res, 409, { error: error.code || 'ledger_capacity', message: error.message });
     return;
   }
 
@@ -560,10 +572,6 @@ async function handleChatMessage(req, res, capability, chatId) {
 async function handleApi(req, res, capability, parsedUrl) {
   const pathname = parsedUrl.pathname;
 
-  if (pathname === '/api/me' && req.method === 'GET') {
-    return sendJson(res, 200, { roles: req.principal.roles, local: req.principal.local });
-  }
-
   if (pathname === '/api/policy/preview' && req.method === 'POST') {
     assertSameOrigin(req);
     const parsed = await extractJsonBody(req);
@@ -578,14 +586,27 @@ async function handleApi(req, res, capability, parsedUrl) {
   }
 
   if (req.method === 'GET' && pathname === '/api/state') {
-    sendJson(res, 200, req.principal.roles.includes('Administrator') ? apiState() : {
-      levels: governance.levels(), vocabulary: governance.vocabulary(),
-    });
+    sendJson(res, 200, apiState());
+    return;
+  }
+
+  if (req.method === 'POST' && pathname === '/api/demo/preflight') {
+    assertSameOrigin(req);
+    const parsed = await extractJsonBody(req);
+    if (!parsed.ok) return sendJson(res, parsed.status, { error: parsed.error });
+    sendJson(res, 200, await runner.demoPreflight());
     return;
   }
 
   if (req.method === 'POST' && pathname === '/api/chats') {
     await handleChatCreate(req, res, capability);
+    return;
+  }
+
+  if (req.method === 'GET' && pathname === '/api/chats/latest') {
+    const policyVersion = governance.active()?.payload?.version;
+    const chat = governance.latestOwnedChat(capability.ownerHash, policyVersion);
+    sendJson(res, 200, sanitizeChat(chat));
     return;
   }
 
@@ -744,31 +765,14 @@ function handleStatic(req, res, parsedUrl) {
 
 const server = http.createServer(async (req, res) => {
   try {
-    // Liveness/readiness probe: no host or origin binding (probe Host may be a pod IP).
-    if ((req.url || '').split('?')[0] === '/healthz') {
-      sendJson(res, 200, { ok: true });
-      return;
-    }
-    // Stay alive but reject work until the state lock is held and the agent is initialised.
-    if (!ready) {
-      sendJson(res, 503, { error: 'starting' });
-      return;
-    }
     assertAllowedHost(req);
     const parsedUrl = new URL(req.url || '/', `http://${hostHeader(req) || `${HOST}:${PORT}`}`);
+    const capability = parseCapability(req);
+
     // SDK model calls use a per-turn unguessable capability, not browser cookies.
     if (parsedUrl.pathname.startsWith('/internal/model/')) {
-      if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)) return unauthorized(res);
       await runner.proxyRequest(req, res);
       return;
-    }
-
-    req.principal = await authenticate(req);
-    if (!req.principal) return unauthorized(res, 'Sign in through the configured Entra provider.');
-    if (!canAccess(req.principal, parsedUrl.pathname)) return sendJson(res, 403, { error: 'Required application role is missing.' });
-    const capability = parseCapability(req);
-    if (capability && !req.principal.local) {
-      capability.ownerHash = crypto.createHash('sha256').update(`${req.principal.id}:${capability.ownerHash}`).digest('hex');
     }
 
     if (parsedUrl.pathname.startsWith('/api/')) {
@@ -799,12 +803,10 @@ const server = http.createServer(async (req, res) => {
 });
 
 async function closeServer() {
-  await runner?.close().catch(() => {});
+  await runner.close().catch(() => {});
   await new Promise((resolve) => {
     server.close(() => resolve());
   });
-  releaseStateLock();
-  await telemetry.shutdown().catch(() => {});
 }
 
 async function main() {
@@ -812,7 +814,6 @@ async function main() {
   server.listen(PORT, HOST, () => {
     console.log(`Cumulus Granitus demo listening on http://${HOST}:${PORT}`);
   });
-  await initState();
 
   const shutdown = async () => {
     process.off('SIGINT', shutdown);
