@@ -208,10 +208,11 @@ OpenAI accounts need an explicit operator-managed role assignment.
   overlapping revisions: an exclusive filesystem lock is also required. The deploy
   script deactivates the old revisions **before** updating (brief downtime) and then
   clears any orphaned `writer.lock` via the storage API — safe because the old writers
-  are already stopped. The app never auto-reclaims a held lock (two concurrent writers
-  would corrupt the ledger); the incoming revision only waits (up to 120 s in cloud
-  mode) for a graceful release. A stale lock left outside a deploy still needs verified
-  operator recovery.
+  are already stopped. Within a revision the lock is a heartbeat lease: the holder
+  refreshes a timestamp every 15 s, and an incoming replica waits (up to 120 s in cloud
+  mode) for a graceful release but reclaims the lock once its heartbeat is stale
+  (>60 s), so an ungracefully-killed replica self-heals instead of crash-looping. A live
+  holder is never displaced because it refreshes well inside the stale window.
 
 ## Azure Verified Modules used
 

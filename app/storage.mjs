@@ -138,14 +138,45 @@ function _lockPath(stateDir) {
   return path.join(root, 'writer.lock');
 }
 
-function _claimLock(lockPath) {
-  const owner = JSON.stringify({ host: os.hostname(), pid: process.pid, token: crypto.randomUUID() });
-  const descriptor = fs.openSync(lockPath, 'wx', 0o600);
-  try { fs.writeFileSync(descriptor, owner); fs.fsyncSync(descriptor); }
+// The lock holder refreshes its heartbeat on this cadence; a starter reclaims a lock whose heartbeat
+// is older than the stale window (i.e. the previous holder terminated without releasing it).
+const LOCK_HEARTBEAT_MS = 15_000;
+const LOCK_STALE_MS = 60_000;
+
+function _writeLock(lockPath, owner, flags) {
+  const descriptor = fs.openSync(lockPath, flags, 0o600);
+  try { fs.writeFileSync(descriptor, JSON.stringify(owner)); fs.fsyncSync(descriptor); }
   finally { fs.closeSync(descriptor); }
+}
+
+function _claimLock(lockPath) {
+  const token = crypto.randomUUID();
+  const owner = { host: os.hostname(), pid: process.pid, token, heartbeat: Date.now() };
+  _writeLock(lockPath, owner, 'wx'); // 'wx' fails if a lock file already exists
+  const heartbeat = setInterval(() => {
+    try { owner.heartbeat = Date.now(); _writeLock(lockPath, owner, 'w'); }
+    catch { /* transient share error; the next tick retries */ }
+  }, LOCK_HEARTBEAT_MS);
+  heartbeat.unref?.();
   return () => {
-    if (fs.existsSync(lockPath) && fs.readFileSync(lockPath, 'utf8') === owner) fs.unlinkSync(lockPath);
+    clearInterval(heartbeat);
+    try {
+      if (!fs.existsSync(lockPath)) return;
+      if (JSON.parse(fs.readFileSync(lockPath, 'utf8')).token === token) fs.unlinkSync(lockPath);
+    } catch { /* released concurrently or torn read; nothing to clean up */ }
   };
+}
+
+// A lock is reclaimable only when its holder has stopped refreshing the heartbeat. A torn read during a
+// heartbeat write, or a lock that just disappeared, is treated as not-stale so a live holder is never
+// displaced (two concurrent writers would corrupt the append-only ledger). Locks written before the
+// heartbeat existed fall back to file mtime.
+function _lockIsStale(lockPath) {
+  try {
+    const held = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+    const last = typeof held.heartbeat === 'number' ? held.heartbeat : fs.statSync(lockPath).mtimeMs;
+    return Date.now() - last > LOCK_STALE_MS;
+  } catch { return false; }
 }
 
 const LOCK_HELD_MESSAGE = 'State is locked. Stop the previous writer; after a crash, an operator must verify it is stopped before removing writer.lock.';
@@ -154,20 +185,29 @@ const LOCK_HELD_MESSAGE = 'State is locked. Stop the previous writer; after a cr
 export function acquireStateLock(stateDir) {
   const lockPath = _lockPath(stateDir);
   try { return _claimLock(lockPath); }
-  catch { throw new Error(LOCK_HELD_MESSAGE); }
+  catch {
+    if (_lockIsStale(lockPath)) {
+      try { fs.unlinkSync(lockPath); return _claimLock(lockPath); } catch { /* fall through */ }
+    }
+    throw new Error(LOCK_HELD_MESSAGE);
+  }
 }
 
-// Non-blocking acquisition. A rolling Container Apps deploy briefly overlaps old and new revisions
-// on the shared state volume; in remote mode wait (without freezing the event loop, so /healthz keeps
-// answering) for the previous writer to release its lock on graceful shutdown. The lock is never
-// auto-reclaimed by the app: two concurrent writers would corrupt the append-only ledger, so a
-// genuinely orphaned lock is cleared by the deploy (which stops the old revisions first).
+// Non-blocking acquisition. A rolling Container Apps deploy briefly overlaps old and new revisions on
+// the shared state volume; in remote mode wait (without freezing the event loop, so /healthz keeps
+// answering) for the previous writer to release its lock on graceful shutdown. A holder that dies
+// ungracefully leaves an orphaned lock; reclaim it once its heartbeat goes stale so the app self-heals
+// instead of crash-looping forever.
 export async function acquireStateLockAsync(stateDir) {
   const lockPath = _lockPath(stateDir);
   const deadline = Date.now() + (process.env.PDA_ALLOW_REMOTE === '1' ? 120_000 : 0);
   for (;;) {
     try { return _claimLock(lockPath); }
     catch {
+      if (_lockIsStale(lockPath)) {
+        try { fs.unlinkSync(lockPath); } catch { /* another starter reclaimed it first */ }
+        continue;
+      }
       if (Date.now() >= deadline) throw new Error(LOCK_HELD_MESSAGE);
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }

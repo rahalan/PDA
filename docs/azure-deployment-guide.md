@@ -273,9 +273,10 @@ $env:PDA_DELETE_CONFIRM = 'delete'
 - New DEK envelopes retain the exact KEK version. Keep that key version enabled and
   recoverable. Legacy raw-base64 wrapped DEKs fail closed rather than guessing a
   version; recover the original key ID before an explicitly approved migration.
-- The server acquires `writer.lock` before protector/store initialization. After a
-  crash, verify all prior replicas/processes are stopped before an authorized
-  operator removes a stale lock. Do not remove a lock solely because an update fails.
+- The server acquires `writer.lock` before protector/store initialization. The lock is a
+  heartbeat lease: an incoming replica reclaims it automatically once the previous holder's
+  heartbeat is stale (>60 s), so an ungraceful crash self-heals. Only remove a lock by hand
+  if recovery is stuck; verify all prior replicas/processes are stopped first.
 - Restart clears interrupted chat busy flags only after writer ownership is acquired.
   A crash between ledger append and checkpoint publication can still require
   restoration of a verified backup. Never fabricate a replacement checkpoint.
@@ -296,6 +297,6 @@ $env:PDA_DELETE_CONFIRM = 'delete'
 | Container `VolumeMountFailure: mount error(13): Permission denied` | Storage shared-key/public access disabled or firewall `defaultAction Deny` (usually an Azure Policy) | Apply the `SecurityControl: Ignore` tag exemption; the templates set shared-key, public access and `networkAcls defaultAction Allow` |
 | `403` (empty body, `x-ms-middleware-request-id` header) on `POST /api/chats` | EasyAuth CSRF mitigation rejects the same-origin POST when the origin isn't approved | The template sets `login.allowedExternalRedirectUrls` to the app's own origin; confirm it matches the current FQDN |
 | Login fails `AADSTS500113` (no reply address) / `AADSTS700054` (id_token disabled) | App registration missing the callback reply URL or ID-token issuance | Register `https://<web-fqdn>/.auth/login/aad/callback` and enable ID-token issuance; the deploy step also auto-registers the reply URL when the deployer owns the app registration |
-| New revision crash-loops `State is locked` after redeploy | Old and new revisions briefly share the state mount during a rolling deploy, or an orphaned lock remains after a crash | The deploy stops the old revisions and clears any orphaned `writer.lock` before updating; the incoming revision also waits up to 120 s for a graceful release. If it persists, deactivate the old revision and delete `writer.lock` from the `pda-state` share |
+| New revision crash-loops `State is locked` after redeploy | Old and new revisions briefly share the state mount during a rolling deploy, or an orphaned lock remains after a crash | The deploy stops the old revisions and clears any orphaned `writer.lock` before updating; within a revision the heartbeat lease auto-reclaims a stale lock (~60 s) so restarts self-heal. If it persists beyond ~2 min, deactivate the old revision and delete `writer.lock` from the `pda-state` share |
 | Chat replies "Copilot execution failed" | SDK's native HTTP client found no system CA store | The container image installs `ca-certificates`; confirm that layer is present |
 | Chat replies "Azure OpenAI rejected the request (HTTP 400)" | Strict tool schema missing a `required` array, or the SDK injected fields Azure rejects (`stream_options`, `reasoning_effort`, `snippy`) | Tool `parameters` include a `required` array; the proxy forwards only an allow-list of standard chat-completions fields |
