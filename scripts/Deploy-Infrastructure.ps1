@@ -154,7 +154,13 @@ if (Get-Command az -ErrorAction SilentlyContinue) {
         $existingUris = az ad app show --id $clientId --query 'web.redirectUris' -o json 2>$null | ConvertFrom-Json
         $redirectUris = @(@($existingUris) + $callbackUrl | Where-Object { $_ } | Select-Object -Unique)
         Write-Step "Ensuring EasyAuth reply URL $callbackUrl is registered on app $clientId"
-        az ad app update --id $clientId --web-redirect-uris $redirectUris --enable-id-token-issuance true --only-show-errors 2>$null | Out-Null
+        $updateOutput = az ad app update --id $clientId --web-redirect-uris $redirectUris --enable-id-token-issuance true --only-show-errors 2>&1
+        # The update is best-effort (the deploying principal may not own the app registration), so verify
+        # it actually took effect and surface a loud, actionable warning instead of silently failing login.
+        $verifyUris = az ad app show --id $clientId --query 'web.redirectUris' -o json 2>$null | ConvertFrom-Json
+        if (@($verifyUris) -notcontains $callbackUrl) {
+            Write-Warning "Reply-URL registration did NOT take effect; login will fail with AADSTS50011 until you register it manually:`n  az ad app update --id $clientId --web-redirect-uris `"$callbackUrl`" --enable-id-token-issuance true`n(az output: $updateOutput)"
+        }
     }
     catch {
         Write-Step "Reply-URL registration skipped (register it manually if login fails): $($_.Exception.Message)"
