@@ -245,7 +245,19 @@ export class AgentRunner {
           : body.data.map(model => ({ id: model.id }));
       }
       const known = models.some(m => m.id === route.model);
-      return this.readiness[id] = { ok: known, message: known ? 'Configured model discovered. Inference has not been tested by this check.' : 'Configured model not in the discovered list.', models, checkedAt: new Date().toISOString() };
+      // Azure OpenAI's /openai/v1/models lists base model names, not deployment names, so a matched
+      // name is a bonus; an authorized, reachable discovery response is a sufficient readiness signal.
+      const ready = known || this.isAzureRoute(route);
+      return this.readiness[id] = {
+        ok: ready,
+        message: known
+          ? 'Configured model discovered. Inference has not been tested by this check.'
+          : ready
+            ? 'Endpoint reachable and the managed identity is authorized; the deployment is verified at first use.'
+            : 'Configured model not in the discovered list.',
+        models,
+        checkedAt: new Date().toISOString(),
+      };
     } catch (error) { return this.readiness[id] = { ok: false, message: this.safeError(error), code: error.code || 'probe_failed', checkedAt: new Date().toISOString() }; }
   }
   safeError(error) {
