@@ -204,8 +204,17 @@ union isfuzzy=true ContainerAppConsoleLogs_CL, ContainerAppSystemLogs_CL
     }
 } until ($healthy)
 
-$anonymous = Invoke-WebRequest -Uri "$webUrl/api/state" -SkipHttpErrorCheck -MaximumRedirection 0 -ErrorAction SilentlyContinue -TimeoutSec 30
-if ($anonymous.StatusCode -notin @(302, 401, 403)) { throw 'Anonymous API access was not rejected; deployment requires investigation.' }
+# The app answers /healthz before its single-writer state lock is held, so /api/state can briefly
+# return a transient "starting" 503. Poll past that, then assert anonymous access is rejected.
+$anonymousStatus = $null
+$anonDeadline = (Get-Date).AddSeconds(90)
+do {
+    $anonymous = Invoke-WebRequest -Uri "$webUrl/api/state" -SkipHttpErrorCheck -MaximumRedirection 0 -ErrorAction SilentlyContinue -TimeoutSec 30
+    $anonymousStatus = $anonymous.StatusCode
+    if ($anonymousStatus -in @(302, 401, 403)) { break }
+    Start-Sleep -Seconds 5
+} while ((Get-Date) -lt $anonDeadline)
+if ($anonymousStatus -notin @(302, 401, 403)) { throw "Anonymous API access was not rejected (last status: $anonymousStatus); deployment requires investigation." }
 
 Set-GitHubOutput -Name 'webUrl' -Value $webUrl
 Write-Step "Deployment complete. Web URL: $webUrl"

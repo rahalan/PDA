@@ -5,7 +5,7 @@ import path from 'node:path';
 
 import { AgentRunner } from './app/agent.mjs';
 import { ENVIRONMENTS, LEVELS, TOOLS, Governance } from './app/governance.mjs';
-import { Store, acquireStateLock } from './app/storage.mjs';
+import { Store, acquireStateLockAsync } from './app/storage.mjs';
 import { createProtector } from './app/protector.mjs';
 import { initTelemetry } from './app/telemetry.mjs';
 import { canAccess, createAuthenticator } from './app/auth.mjs';
@@ -55,14 +55,27 @@ const HTML_FILES = new Map([
 ensureLoopbackPort();
 const authenticate = await createAuthenticator();
 const telemetry = await initTelemetry();
-const releaseStateLock = acquireStateLock(STATE_DIR);
-process.once('exit', releaseStateLock);
-const store = new Store(STATE_DIR, { protector: await createProtector(STATE_DIR), onAppend: telemetry.onLedgerAppend });
-const cookieSigningKey = store.getSecret('operator-cookie-secret') || crypto.randomBytes(32).toString('hex');
-if (!store.secretPresent('operator-cookie-secret')) store.setSecret('operator-cookie-secret', cookieSigningKey);
-const CAPABILITY_SECRET = Buffer.from(cookieSigningKey, 'hex');
-const governance = new Governance(store);
-const runner = new AgentRunner(governance, store);
+// State (the single-writer lock, store, governance and agent) is initialised after the HTTP server
+// is listening, so /healthz keeps answering while we wait for a previous writer's lock to release.
+// Blocking here instead would freeze the event loop and fail the platform health probe.
+let releaseStateLock = () => {};
+let store = null;
+let CAPABILITY_SECRET = null;
+let governance = null;
+let runner = null;
+let ready = false;
+
+async function initState() {
+  releaseStateLock = await acquireStateLockAsync(STATE_DIR);
+  process.once('exit', () => releaseStateLock());
+  store = new Store(STATE_DIR, { protector: await createProtector(STATE_DIR), onAppend: telemetry.onLedgerAppend });
+  const cookieSigningKey = store.getSecret('operator-cookie-secret') || crypto.randomBytes(32).toString('hex');
+  if (!store.secretPresent('operator-cookie-secret')) store.setSecret('operator-cookie-secret', cookieSigningKey);
+  CAPABILITY_SECRET = Buffer.from(cookieSigningKey, 'hex');
+  governance = new Governance(store);
+  runner = new AgentRunner(governance, store);
+  ready = true;
+}
 
 let activeTurn = null;
 
@@ -736,6 +749,11 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 200, { ok: true });
       return;
     }
+    // Stay alive but reject work until the state lock is held and the agent is initialised.
+    if (!ready) {
+      sendJson(res, 503, { error: 'starting' });
+      return;
+    }
     assertAllowedHost(req);
     const parsedUrl = new URL(req.url || '/', `http://${hostHeader(req) || `${HOST}:${PORT}`}`);
     // SDK model calls use a per-turn unguessable capability, not browser cookies.
@@ -781,7 +799,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 async function closeServer() {
-  await runner.close().catch(() => {});
+  await runner?.close().catch(() => {});
   await new Promise((resolve) => {
     server.close(() => resolve());
   });
@@ -794,6 +812,7 @@ async function main() {
   server.listen(PORT, HOST, () => {
     console.log(`Cumulus Granitus demo listening on http://${HOST}:${PORT}`);
   });
+  await initState();
 
   const shutdown = async () => {
     process.off('SIGINT', shutdown);

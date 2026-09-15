@@ -131,30 +131,46 @@ function sortLedgerRecords(records) {
   return records.slice().sort((left, right) => left.seq - right.seq);
 }
 
-export function acquireStateLock(stateDir) {
+function _lockPath(stateDir) {
   const root = Store.prototype._resolveRoot.call({ repoRoot: MODULE_ROOT }, stateDir);
   ensureDir(root);
-  const lockPath = path.join(root, 'writer.lock');
+  return path.join(root, 'writer.lock');
+}
+
+function _claimLock(lockPath) {
   const owner = JSON.stringify({ host: os.hostname(), pid: process.pid, token: crypto.randomUUID() });
-  // A rolling Container Apps deploy briefly overlaps old and new revisions on the shared state volume.
-  // In remote mode wait for the previous writer to release its lock on graceful shutdown; local mode
-  // keeps the original fail-fast behaviour. The lock is never auto-reclaimed by the app: two concurrent
-  // writers would corrupt the append-only ledger, so a genuinely orphaned lock is cleared by the deploy
-  // (which stops the old revisions first), never by an age heuristic here.
-  const deadline = Date.now() + (process.env.PDA_ALLOW_REMOTE === '1' ? 120_000 : 0);
-  let descriptor;
-  for (;;) {
-    try { descriptor = fs.openSync(lockPath, 'wx', 0o600); break; }
-    catch {
-      if (Date.now() >= deadline) throw new Error('State is locked. Stop the previous writer; after a crash, an operator must verify it is stopped before removing writer.lock.');
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2000);
-    }
-  }
+  const descriptor = fs.openSync(lockPath, 'wx', 0o600);
   try { fs.writeFileSync(descriptor, owner); fs.fsyncSync(descriptor); }
   finally { fs.closeSync(descriptor); }
   return () => {
     if (fs.existsSync(lockPath) && fs.readFileSync(lockPath, 'utf8') === owner) fs.unlinkSync(lockPath);
   };
+}
+
+const LOCK_HELD_MESSAGE = 'State is locked. Stop the previous writer; after a crash, an operator must verify it is stopped before removing writer.lock.';
+
+// Fail-fast, single attempt. The repository-root check throws synchronously.
+export function acquireStateLock(stateDir) {
+  const lockPath = _lockPath(stateDir);
+  try { return _claimLock(lockPath); }
+  catch { throw new Error(LOCK_HELD_MESSAGE); }
+}
+
+// Non-blocking acquisition. A rolling Container Apps deploy briefly overlaps old and new revisions
+// on the shared state volume; in remote mode wait (without freezing the event loop, so /healthz keeps
+// answering) for the previous writer to release its lock on graceful shutdown. The lock is never
+// auto-reclaimed by the app: two concurrent writers would corrupt the append-only ledger, so a
+// genuinely orphaned lock is cleared by the deploy (which stops the old revisions first).
+export async function acquireStateLockAsync(stateDir) {
+  const lockPath = _lockPath(stateDir);
+  const deadline = Date.now() + (process.env.PDA_ALLOW_REMOTE === '1' ? 120_000 : 0);
+  for (;;) {
+    try { return _claimLock(lockPath); }
+    catch {
+      if (Date.now() >= deadline) throw new Error(LOCK_HELD_MESSAGE);
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+  }
 }
 
 export class Store {
