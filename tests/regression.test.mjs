@@ -72,7 +72,7 @@ test('HTTP dispatch rejects unauthorized roles and binds ownership to identity',
   const replies = [];
   const sendJson = (res, status, body) => replies.push({ status, body });
   const context = {
-    http: { createServer: callback => { handler = callback; } }, URL, crypto, HOST: '127.0.0.1', PORT: 8110,
+    http: { createServer: callback => { handler = callback; } }, URL, crypto, HOST: '127.0.0.1', PORT: 8110, ready: true,
     assertAllowedHost: () => {}, hostHeader: () => 'localhost:8110', canAccess, sendJson,
     authenticate: async req => req.fixturePrincipal || null,
     unauthorized: res => sendJson(res, 401, {}),
