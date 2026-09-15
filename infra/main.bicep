@@ -27,9 +27,6 @@ param authClientSecret string
 @minLength(1)
 param authTokenStoreSasUrl string
 
-@allowed(['Public cloud', 'EU-only'])
-param hostGeography string = 'Public cloud'
-
 @description('Container registry name. Leave empty to derive one; the pipeline passes a deterministic name so it can build and push before this deployment runs.')
 param acrName string = ''
 
@@ -371,8 +368,6 @@ var webFqdn = '${webAppName}.${environment.outputs.defaultDomain}'
 var baseEnv = [
   { name: 'PDA_AUTH_TENANT_ID', value: authTenantId }
   { name: 'PDA_AUTH_CLIENT_ID', value: authClientId }
-  { name: 'PDA_HOST_GEOGRAPHY', value: hostGeography }
-  { name: 'PDA_SIMULATE_SOVEREIGNTY', value: '1' }
   {
     name: 'PDA_ALLOW_REMOTE'
     value: '1'

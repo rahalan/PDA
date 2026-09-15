@@ -23,7 +23,6 @@ $templateParameters = @{
     authTenantId                 = Get-RequiredEnv 'PDA_AUTH_TENANT_ID'
     authClientId                 = Get-RequiredEnv 'PDA_AUTH_CLIENT_ID'
     authClientSecret             = Get-RequiredEnv 'PDA_AUTH_CLIENT_SECRET'
-    hostGeography                = Get-OptionalEnv 'PDA_HOST_GEOGRAPHY' 'Public cloud'
     namePrefix                   = $config.NamePrefix
     acrName                      = $config.AcrName
     webImage                     = $webImage

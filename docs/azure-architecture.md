@@ -251,8 +251,6 @@ Environment variables consumed by the app (set on the web container by Bicep):
 | `PORT` | `8110` | `8110` | Listen port (kept at 8110 so the internal proxy works) |
 | `PDA_PUBLIC_SCHEME` | `http` | `https` | Scheme used in the same-origin check |
 | `PDA_ALLOWED_HOSTS` | — | web FQDN | Extra hostnames accepted in the `Host` header |
-| `PDA_SIMULATE_SOVEREIGNTY` | unset | `1` | Serve every governed geography (the `onprem` route is simulated) instead of refusing residencies the host cannot truly satisfy |
-| `PDA_HOST_GEOGRAPHY` | on-premises | `Public cloud` or reviewed `EU-only` | Host residency ceiling (ignored when `PDA_SIMULATE_SOVEREIGNTY=1`) |
 | `PDA_AUTH_TENANT_ID`, `PDA_AUTH_CLIENT_ID` | unset | required GUIDs | Tenant and audience for signed user ID tokens |
 | `PDA_INTERNAL_BASE` | `http://127.0.0.1:8110` | same | Base for the in-process model proxy |
 | `PDA_OTEL_ENABLED` | unset | `1` | Emit the non-authoritative OpenTelemetry ledger mirror |
@@ -266,8 +264,9 @@ updated runtime requires Node 22.12 or later and exclusive state ownership.
 
 - **Three model routes**: `global`, `eu` and `onprem` are all deployments on one Azure
   OpenAI account, served by the managed identity (`disableLocalAuth: true` — no keys are
-  stored). Routing is by governed level; `PDA_SIMULATE_SOVEREIGNTY=1` lets the cloud host
-  serve every geography so the simulated `onprem` route can be demonstrated.
+  stored). Routing is by governed level and sovereignty; the `onprem` route carries a
+  `demo-local-simulation` route declaration so the cloud host can demonstrate the
+  On-premises path without claiming physical on-premises execution.
 - **Simulated on-premises**: the `onprem` route runs in the cloud, not on-premises, and
   is labelled **simulated** in the Admin card, the User route footer and the Compliance
   ledger (`pda.simulated`). It is not evidence of on-premises execution.

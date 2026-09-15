@@ -140,7 +140,6 @@ Variables:
 | `AZURE_RESOURCE_GROUP` | `pda-demo-rg` | Created if missing |
 | `AZURE_LOCATION` | `swedencentral` | Use an EU region so the `eu` route's residency is genuine |
 | `PDA_NAME_PREFIX` | `pda` | 2–8 lower-case chars/digits |
-| `PDA_HOST_GEOGRAPHY` | `Public cloud` | Host residency ceiling; ignored when `PDA_SIMULATE_SOVEREIGNTY=1` (set by the template) |
 | `PDA_DEPLOY_AZURE_OPENAI` | `true` / `false` | Provision the Azure OpenAI account and the three deployments (default `true`) |
 | `PDA_AZURE_OPENAI_ENDPOINT` | *(v1 endpoint)* | Use an existing Azure OpenAI account instead of provisioning; it must already have `global`/`eu`/`onprem` deployments |
 | `PDA_AZURE_OPENAI_MODEL` | `gpt-4.1-mini` | Model deployed for all three deployments when provisioning |
