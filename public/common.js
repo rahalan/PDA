@@ -37,8 +37,20 @@ const button = (label, action, cls = '') => { const b = node('button', label, cl
 const details = (label, value) => { const d = node('details', '', 'details'); d.append(node('summary', label), node('pre', typeof value === 'string' ? value : json(value), 'json-block')); return d; };
 const select = (id, choices, value) => { const s = node('select'); s.id = id; choices.forEach(c => s.append(option(c.id ?? c, c.name ?? c))); s.value = value; return s; };
 const alert = (id, text, tone = 'error') => { $(id).replaceChildren(...(text ? [node('div', text, `alert alert--${tone}`)] : [])); };
+// EasyAuth's session cookie can outlive the injected id token, so the app returns 401 while the session
+// still looks valid. Re-run the login flow (silent when the AAD session is alive) to refresh the token,
+// guarding against a redirect loop if that does not clear the 401. Returns true when a redirect started.
+function maybeReauth(status) {
+  if (status !== 401) return false;
+  const now = Date.now();
+  if (now - Number(sessionStorage.getItem('pda_reauth_at') || 0) <= 15000) return false;
+  sessionStorage.setItem('pda_reauth_at', String(now));
+  location.assign(`/.auth/login/aad?post_login_redirect_uri=${encodeURIComponent(location.pathname + location.search)}`);
+  return true;
+}
 async function api(url, method = 'GET', body) {
   const r = await fetch(url, { method, credentials: 'same-origin', ...(body !== undefined ? { headers: { 'Content-Type': 'application/json' }, body: json(body) } : {}) });
+  if (maybeReauth(r.status)) return new Promise(() => {});
   const data = await r.json();
   if (!r.ok) {
     const error = new Error(data.message || data.error || `Request failed (${r.status})`);
@@ -95,6 +107,7 @@ function message(parent, role, text, footer = '', activities = [], live = false,
 }
 async function stream(url, body, handle) {
   const r = await fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: json(body) });
+  if (maybeReauth(r.status)) return new Promise(() => {});
   if (!r.ok) throw new Error((await r.json()).error || 'Chat request failed.');
   const reader = r.body.getReader(), decoder = new TextDecoder(); let buffer = '';
   for (;;) {
