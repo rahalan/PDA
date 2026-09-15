@@ -8,7 +8,7 @@ export function canAccess(principal, pathname) {
   if (/^\/api\/(policy|settings|credentials|routes)(\/|$)/.test(pathname) || /^\/admin(?:\.html)?$/.test(pathname)) {
     return roles.includes('Administrator');
   }
-  if (pathname.startsWith('/api/chats') || ['/', '/chat', '/chat.html', '/index.html'].includes(pathname)) {
+  if (pathname.startsWith('/api/chats') || pathname === '/api/demo/preflight' || ['/', '/chat', '/chat.html', '/index.html'].includes(pathname)) {
     return roles.includes('User') || roles.includes('Administrator');
   }
   if (pathname.startsWith('/api/') && !['/api/me', '/api/state'].includes(pathname)) return false;
