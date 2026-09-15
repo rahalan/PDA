@@ -677,18 +677,21 @@ export class Governance {
     const allowedModels = this._allowedEntries(policy, 'allowedModels', state.level);
     const allowedEnvironments = this._allowedEntries(policy, 'allowedEnvironments', state.level).map(id => this._baseEnvironmentId(id, policy));
     const environmentId = this._resolveEnvironmentId(state.sovereignty, policy);
-    const namedRestrictedEnvironment = this._isNamedRestrictedEnvironment(environmentId, policy);
-    const useEuPool = !namedRestrictedEnvironment && EU_POOL_ROUTE_IDS.includes(preference);
+    // Any sovereignty stricter than the Public-cloud baseline (named regions and On-premises) needs
+    // environment-aware selection so the most-sovereign route stays reachable even when the level's
+    // preference route cannot satisfy it.
+    const environmentAware = this._rankSovereignty(environmentId, policy) > 0;
+    const useEuPool = !environmentAware && EU_POOL_ROUTE_IDS.includes(preference);
     const configuredPool = [...settings.euRouting.order];
     const poolIndex = new Map(configuredPool.map((routeId, index) => [routeId, index]));
     const orderedPool = settings.euRouting.strategy === 'cost'
       ? configuredPool.sort((left, right) => settings.routes[left].costScore - settings.routes[right].costScore
         || poolIndex.get(left) - poolIndex.get(right))
       : configuredPool;
-    const compatibleEnvironmentRoutes = namedRestrictedEnvironment
+    const compatibleEnvironmentRoutes = environmentAware
       ? [...ROUTE_IDS].filter(routeId => this._environmentSatisfies(settings.routes[routeId]?.geography, environmentId, policy))
       : [];
-    const routeIds = namedRestrictedEnvironment
+    const routeIds = environmentAware
       ? [...new Set([preference, ...orderedPool, ...compatibleEnvironmentRoutes])]
       : useEuPool
         ? orderedPool
@@ -741,7 +744,7 @@ export class Governance {
       throw this._routeError(first?.code ?? 'NO_AUTHORIZED_ROUTE', first?.message ?? `No route satisfies ${state.sovereignty}`);
     }
     return {
-      strategy: namedRestrictedEnvironment ? `environment-aware-${settings.euRouting.strategy}` : useEuPool ? settings.euRouting.strategy : 'preference',
+      strategy: environmentAware ? `environment-aware-${settings.euRouting.strategy}` : useEuPool ? settings.euRouting.strategy : 'preference',
       fallbackEnabled: (useEuPool || compatibleEnvironmentRoutes.length > 1) && settings.euRouting.fallbackEnabled,
       routes,
       skipped,
