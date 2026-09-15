@@ -37,6 +37,7 @@ deliberately have no secret defaults.
   - [5. First-run configuration in the app](#5-first-run-configuration-in-the-app)
   - [Manual / local deployment](#manual--local-deployment)
   - [Configuration reference](#configuration-reference)
+  - [Adding a model route](#adding-a-model-route)
   - [Teardown](#teardown)
   - [State recovery](#state-recovery)
   - [Troubleshooting](#troubleshooting)
