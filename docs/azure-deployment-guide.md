@@ -248,6 +248,30 @@ with `PDA_TOKEN_STORE_ACCOUNT` if needed. The SAS expires in 2 years; redeploy t
 
 Bicep parameters are documented inline in [infra/main.bicep](../infra/main.bicep).
 
+## Adding a model route
+
+The set of model routes is a **deploy-time catalog**, not a runtime list. It is defined by
+`settings-cloud/models.settings.json` (or the base `settings/`), loaded once at boot. The Admin
+UI can **tune existing routes** — name, model (deployment) name, endpoint (only among each route's
+`approvedBaseUrls`), enable/disable, cost score, API keys, per-level preferred route, and EU routing
+order — but it **cannot add a new route**; `updateSettings` rejects any unknown route id. This keeps
+each route's geography (sovereignty) and egress URL allow-list under reviewed, deploy-time control.
+
+To add a new model route, edit the settings and redeploy:
+
+1. **`models.settings.json`** — add a route object: `id`, `kind` (`azure-openai`, `openai-compatible`,
+   `ollama`, or `copilot`), `name`, `enabled`, `model` (the Azure *deployment* name), `baseUrl`,
+   `approvedBaseUrls` (the egress allow-list), `geography` (`Public cloud` / `region-eu` /
+   `On-premises`), `costScore`, `discovery`, and `requiredForDemo`. Add it to a `preferences`
+   `allowedRouteIds` (and `routingPools` if it should participate in the EU pool).
+2. **`policy.settings.json`** — add the route id to `allowedModels` for each protection level it may
+   serve, and add a `routeEnvironmentDeclarations` entry describing its residency basis.
+3. **`credentials.settings.json`** — add a matching participant (`kind: "model"`).
+4. For a provisioned Azure OpenAI account, add the corresponding deployment in
+   [infra/main.bicep](../infra/main.bicep) (or point `baseUrl` at an existing one).
+5. Redeploy, then re-seed the policy so the new `allowedModels` takes effect: deploy once with
+   `reseedPolicy=true` / `PDA_RESEED_POLICY=1`, then set it back — or do a clean resource-group deploy.
+
 ## Teardown
 
 Run the **Teardown PDA Azure environment** workflow and type `delete` to confirm, or
