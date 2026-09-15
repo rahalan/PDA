@@ -45,6 +45,7 @@ jobs:
       PDA_AUTH_CLIENT_ID: ${{ secrets.PDA_AUTH_CLIENT_ID }}
       PDA_AUTH_CLIENT_SECRET: ${{ secrets.PDA_AUTH_CLIENT_SECRET }}
       DEPLOYER_PRINCIPAL_ID: ${{ vars.DEPLOYER_PRINCIPAL_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

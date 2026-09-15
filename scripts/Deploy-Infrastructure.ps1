@@ -149,6 +149,20 @@ if (Get-Command az -ErrorAction SilentlyContinue) {
     $previousNativePref = $PSNativeCommandUseErrorActionPreference
     $PSNativeCommandUseErrorActionPreference = $false
     try {
+        # The workflow's GitHub OIDC client assertion is valid only ~5 minutes; build+push+deploy can
+        # outlast it, so a Graph call here fails with AADSTS700024 (assertion expired). Re-mint a fresh
+        # OIDC token and re-login as the deployer SP so the assertion is valid at Graph-call time.
+        $deployerClientId = Get-OptionalEnv 'AZURE_CLIENT_ID' ''
+        if ($env:ACTIONS_ID_TOKEN_REQUEST_URL -and $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN -and -not [string]::IsNullOrWhiteSpace($deployerClientId)) {
+            try {
+                $oidc = Invoke-RestMethod -Uri "$($env:ACTIONS_ID_TOKEN_REQUEST_URL)&audience=api://AzureADTokenExchange" -Headers @{ Authorization = "Bearer $($env:ACTIONS_ID_TOKEN_REQUEST_TOKEN)" }
+                az login --service-principal --username $deployerClientId --tenant (Get-RequiredEnv 'PDA_AUTH_TENANT_ID') --federated-token $oidc.value --only-show-errors 2>$null | Out-Null
+                az account set --subscription $config.SubscriptionId --only-show-errors 2>$null | Out-Null
+            }
+            catch {
+                Write-Step "Federated re-login before reply-URL registration failed: $($_.Exception.Message)"
+            }
+        }
         $clientId = $templateParameters.authClientId
         $callbackUrl = "$webUrl/.auth/login/aad/callback"
         $existingUris = az ad app show --id $clientId --query 'web.redirectUris' -o json 2>$null | ConvertFrom-Json
@@ -167,6 +181,9 @@ if (Get-Command az -ErrorAction SilentlyContinue) {
     }
     finally {
         $PSNativeCommandUseErrorActionPreference = $previousNativePref
+        # Reply-URL registration is best-effort; clear any non-zero exit code left by the az calls above
+        # so the GitHub pwsh wrapper (exit $LASTEXITCODE) does not fail this step after a successful deploy.
+        $global:LASTEXITCODE = 0
     }
 }
 
