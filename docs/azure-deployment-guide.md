@@ -280,6 +280,14 @@ $env:PDA_DELETE_CONFIRM = 'delete'
 - Restart clears interrupted chat busy flags only after writer ownership is acquired.
   A crash between ledger append and checkpoint publication can still require
   restoration of a verified backup. Never fabricate a replacement checkpoint.
+- The governance policy is **seeded once** from the deployment settings and then persisted
+  (signed) to `policies.json` on the state share; `credentials.json` and `policy-draft.json`
+  follow the same rule. Later edits to the `settings*/` files are picked up only on a boot where
+  no stored policy exists (e.g. a clean resource-group deploy that recreates the share). To apply
+  settings changes without recreating the share, boot once with `PDA_RESEED_POLICY=1` (opt-in):
+  it discards the stored policy/credentials/draft, re-seeds from the in-image settings, and appends
+  a `policy-reseeded` ledger event. Set it back to `0`/remove it afterward — while it is set, every
+  container restart re-seeds and discards Admin policy edits.
 - Tests use in-memory or temporary state. No migration of existing state, real
   authentication, model execution or image CVE scan is implied.
 
@@ -298,5 +306,6 @@ $env:PDA_DELETE_CONFIRM = 'delete'
 | `403` (empty body, `x-ms-middleware-request-id` header) on `POST /api/chats` | EasyAuth CSRF mitigation rejects the same-origin POST when the origin isn't approved | The template sets `login.allowedExternalRedirectUrls` to the app's own origin; confirm it matches the current FQDN |
 | Login fails `AADSTS500113` (no reply address) / `AADSTS700054` (id_token disabled) | App registration missing the callback reply URL or ID-token issuance | Register `https://<web-fqdn>/.auth/login/aad/callback` and enable ID-token issuance; the deploy step also auto-registers the reply URL when the deployer owns the app registration |
 | New revision crash-loops `State is locked` after redeploy | Old and new revisions briefly share the state mount during a rolling deploy, or an orphaned lock remains after a crash | The deploy stops the old revisions and clears any orphaned `writer.lock` before updating; within a revision the heartbeat lease auto-reclaims a stale lock (~60 s) so restarts self-heal. If it persists beyond ~2 min, deactivate the old revision and delete `writer.lock` from the `pda-state` share |
+| Settings/policy change not taking effect after an image redeploy (e.g. `ROUTE_NOT_PERMITTED` persists) | The policy is seeded once and persisted to `policies.json` on the state share; the updated `settings*/` files only seed on a boot with no stored policy | Redeploy once with `reseedPolicy=true` (Bicep) / `PDA_RESEED_POLICY=1`, then set it back to false. Ad-hoc: `az containerapp update -n <web> -g <rg> --set-env-vars PDA_RESEED_POLICY=1` then `--remove-env-vars PDA_RESEED_POLICY`. A clean resource-group deploy also re-seeds automatically |
 | Chat replies "Copilot execution failed" | SDK's native HTTP client found no system CA store | The container image installs `ca-certificates`; confirm that layer is present |
 | Chat replies "Azure OpenAI rejected the request (HTTP 400)" | Strict tool schema missing a `required` array, or the SDK injected fields Azure rejects (`stream_options`, `reasoning_effort`, `snippy`) | Tool `parameters` include a `required` array; the proxy forwards only an allow-list of standard chat-completions fields |

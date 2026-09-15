@@ -33,6 +33,8 @@ const DEFAULT_AGENT_ID = DEPLOYMENT_SETTINGS.agents.defaultAgentId;
 export class Governance {
   constructor(store) {
     this.store = store instanceof Store ? store : new Store(store);
+    // Opt-in: discard the persisted policy/credentials/draft and re-seed from deployment settings.
+    this._reseedFromSettings = process.env.PDA_RESEED_POLICY === '1';
     this._policyBundles = this._loadPolicyBundles();
     this._draft = this._loadDraft();
     this._settings = this._loadSettings();
@@ -867,7 +869,7 @@ export class Governance {
   }
 
   _loadPolicyBundles() {
-    const saved = this.store.load('policies', null);
+    const saved = this._reseedFromSettings ? null : this.store.load('policies', null);
     if (Array.isArray(saved) && saved.length > 0) {
       for (const bundle of saved) {
         if (!this.store.verify(bundle)) {
@@ -887,11 +889,12 @@ export class Governance {
     const seed = this.store.seal(this._createDefaultPolicy(1));
     this._validatePolicy(seed.payload);
     this.store.save('policies', [seed]);
+    if (this._reseedFromSettings) this.store.append('policy-reseeded', { policyVersion: seed.payload.version, policyDigest: seed.digest });
     return [seed];
   }
 
   _loadDraft() {
-    const saved = this.store.load('policy-draft', null);
+    const saved = this._reseedFromSettings ? null : this.store.load('policy-draft', null);
     const draft = saved ? this._clone(saved) : this._createDraftFromActive();
     let changed = !saved;
     for (const [levelId, models] of Object.entries(draft.allowedModels ?? {})) {
@@ -952,7 +955,7 @@ export class Governance {
   }
 
   _loadCredentialBook() {
-    const saved = this.store.load('credentials', null);
+    const saved = this._reseedFromSettings ? null : this.store.load('credentials', null);
     const book = new Map();
     if (saved && Array.isArray(saved.items)) {
       for (const entry of saved.items) {

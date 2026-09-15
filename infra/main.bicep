@@ -59,6 +59,9 @@ param azureOpenAiModelVersion string = '2025-04-14'
 @minValue(1)
 param azureOpenAiCapacity int = 10
 
+@description('Opt-in: on the next boot, discard the persisted governance policy/credentials/draft and re-seed them from the in-image settings. Set true for ONE deploy after changing settings, then set back to false (otherwise every container restart re-seeds and discards Admin policy edits).')
+param reseedPolicy bool = false
+
 @description('Optional object ID of the CI/CD deploying principal. When set it is granted data-plane roles needed to seed Key Vault secrets.')
 param deployerPrincipalId string = ''
 
@@ -426,6 +429,12 @@ var baseEnv = [
 
 var webEnv = concat(
   baseEnv,
+  reseedPolicy ? [
+    {
+      name: 'PDA_RESEED_POLICY'
+      value: '1'
+    }
+  ] : [],
   azureEnabled ? [
     {
       name: 'AZURE_OPENAI_ENDPOINT'
