@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "routes": [
+    {
+      "id": "global",
+      "kind": "azure-openai",
+      "name": "Global model",
+      "enabled": true,
+      "model": "global",
+      "baseUrl": "${AZURE_OPENAI_ENDPOINT}",
+      "approvedBaseUrls": ["${AZURE_OPENAI_ENDPOINT}"],
+      "geography": "Public cloud",
+      "costScore": 0,
+      "discovery": { "kind": "openai-models", "url": "${AZURE_OPENAI_ENDPOINT}/models" },
+      "requiredForDemo": true
+    },
+    {
+      "id": "eu",
+      "kind": "azure-openai",
+      "name": "EU model",
+      "enabled": true,
+      "model": "eu",
+      "baseUrl": "${AZURE_OPENAI_ENDPOINT}",
+      "approvedBaseUrls": ["${AZURE_OPENAI_ENDPOINT}"],
+      "geography": "region-eu",
+      "costScore": 0,
+      "discovery": { "kind": "openai-models", "url": "${AZURE_OPENAI_ENDPOINT}/models" },
+      "requiredForDemo": true
+    },
+    {
+      "id": "onprem",
+      "kind": "azure-openai",
+      "name": "On-premises model",
+      "enabled": true,
+      "model": "onprem",
+      "baseUrl": "${AZURE_OPENAI_ENDPOINT}",
+      "approvedBaseUrls": ["${AZURE_OPENAI_ENDPOINT}"],
+      "geography": "On-premises",
+      "costScore": 0,
+      "discovery": { "kind": "openai-models", "url": "${AZURE_OPENAI_ENDPOINT}/models" },
+      "requiredForDemo": true
+    }
+  ],
+  "preferences": [
+    { "id": "public", "label": "Public model preference", "baseLevel": "Public", "allowedRouteIds": ["global"], "defaultRouteId": "global" },
+    { "id": "internal", "label": "Internal model preference", "baseLevel": "Internal", "allowedRouteIds": ["eu"], "defaultRouteId": "eu" },
+    { "id": "high", "label": "Highly Confidential model preference", "baseLevel": "Highly Confidential", "allowedRouteIds": ["onprem"], "defaultRouteId": "onprem" }
+  ],
+  "routingPools": [
+    { "id": "eu", "label": "EU route pool", "strategy": "cost", "fallbackEnabled": true, "routeIds": ["eu"], "order": ["eu"] }
+  ]
+}

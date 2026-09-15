@@ -41,6 +41,26 @@ function rejectSecretFields(value, label) {
   }
 }
 
+// Expands ${ENV_VAR} references in non-secret string values so a deployment can inject values that
+// are only known at deploy time (e.g. the Azure OpenAI endpoint). Secret fields are rejected above.
+function expandEnvPlaceholders(value) {
+  if (typeof value === 'string') {
+    return value.replace(/\$\{([A-Z0-9_]+)\}/g, (_match, name) => {
+      const replacement = process.env[name];
+      if (replacement === undefined) {
+        throw new Error(`Deployment settings reference an unset environment variable: ${name}`);
+      }
+      return replacement;
+    });
+  }
+  if (Array.isArray(value)) return value.map(expandEnvPlaceholders);
+  if (value && typeof value === 'object') {
+    for (const key of Object.keys(value)) value[key] = expandEnvPlaceholders(value[key]);
+    return value;
+  }
+  return value;
+}
+
 function readSettingsFile(settingsDir, domain, fileName) {
   const filePath = path.join(settingsDir, fileName);
   let value;
@@ -60,7 +80,7 @@ function readSettingsFile(settingsDir, domain, fileName) {
     if (!Array.isArray(value[field])) throw new Error(`${domain} settings.${field} must be an array`);
   }
   rejectSecretFields(value, `${domain} settings`);
-  return value;
+  return expandEnvPlaceholders(value);
 }
 
 function deepFreeze(value) {

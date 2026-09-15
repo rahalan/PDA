@@ -25,6 +25,8 @@ COPY --from=build /app/node_modules ./node_modules
 COPY package.json server.mjs ./
 COPY app ./app
 COPY public ./public
+COPY settings ./settings
+COPY settings-cloud ./settings-cloud
 RUN chown -R app:app /app
 USER app
 EXPOSE 8110

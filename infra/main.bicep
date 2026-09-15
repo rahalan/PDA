@@ -399,6 +399,10 @@ var baseEnv = [
     value: '/app'
   }
   {
+    name: 'PDA_SETTINGS_DIR'
+    value: '/app/settings-cloud'
+  }
+  {
     name: 'PORT'
     value: '8110'
   }
