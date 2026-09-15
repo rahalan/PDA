@@ -137,7 +137,7 @@ test('Key Vault envelope reuses its original key version and rejects legacy ambi
 test('roles isolate chat, administration and compliance', async () => {
   const user = { roles: ['User'] };
   assert.equal(canAccess(user, '/api/chats'), true);
-  for (const target of ['/api/settings', '/api/policy/publish', '/api/credentials', '/api/routes/azure/probe', '/api/ledger/export', '/admin', '/compliance']) {
+  for (const target of ['/api/settings', '/api/policy/publish', '/api/credentials', '/api/routes/global/probe', '/api/ledger/export', '/admin', '/compliance']) {
     assert.equal(canAccess(user, target), false, target);
   }
   assert.equal(canAccess({ roles: ['Administrator'] }, '/api/ledger'), false);
@@ -186,9 +186,8 @@ test('state lock prevents a second writer and rejects repository state', () => {
 
 test('cloud settings, monotonic residency and restart recovery', async () => {
   const overrides = {
-    PDA_ALLOW_REMOTE: '1', PDA_HOST_GEOGRAPHY: 'EU-only', PDA_OLLAMA_GEOGRAPHY: 'EU-only',
-    PDA_OLLAMA_BASE: 'https://ollama.example.test/v1', PDA_OLLAMA_MODEL: 'llama3.1',
-    PDA_PUBLIC_ROUTE: 'azure', AZURE_OPENAI_ENDPOINT: 'https://example.openai.azure.com/openai/v1',
+    PDA_ALLOW_REMOTE: '1', PDA_SIMULATE_SOVEREIGNTY: '1',
+    AZURE_OPENAI_ENDPOINT: 'https://example.openai.azure.com/openai/v1',
   };
   const previous = Object.fromEntries(Object.keys(overrides).map(key => [key, process.env[key]]));
   Object.assign(process.env, overrides);
@@ -204,22 +203,23 @@ test('cloud settings, monotonic residency and restart recovery', async () => {
     store.secretPresent = () => false;
     store.append = () => {};
     let governance = new Governance(store);
-    assert.equal(governance.settings().routes.ollama.model, 'llama3.1');
-    assert.equal(governance.settings().routes.ollama.geography, 'EU-only');
-    assert.equal(governance.recommendRoute(governance.newChat('Public')).id, 'azure');
-    assert.throws(() => governance.recommendRoute(governance.newChat('Highly Confidential')), /cloud host/);
-    assert.throws(() => governance.updateSettings({ routes: [{ id: 'azure', baseUrl: 'https://evil.example/openai/v1' }] }), /approved/);
+    assert.equal(governance.settings().routes.eu.geography, 'EU-only');
+    assert.equal(governance.settings().routes.onprem.geography, 'On-premises');
+    assert.equal(governance.settings().routes.onprem.simulated, true);
+    assert.equal(governance.settings().routes.eu.simulated, false);
+    assert.equal(governance.recommendRoute(governance.newChat('Public')).id, 'global');
+    assert.equal(governance.recommendRoute(governance.newChat('Highly Confidential')).id, 'onprem');
+    assert.throws(() => governance.updateSettings({ routes: [{ id: 'global', baseUrl: 'https://evil.example/openai/v1' }] }), /approved/);
     const chat = governance.newChat('Public');
     chat.busy = true;
     governance.updateChat(chat);
     const saved = state.get('settings');
     saved.preferences.public = 'copilot';
-    saved.routes.azure.baseUrl = 'https://azure-openai.invalid/openai/v1';
-    saved.routes.azure.enabled = false;
+    saved.routes.global.baseUrl = 'https://azure-openai.invalid/openai/v1';
     governance = new Governance(store);
     assert.equal(governance.getChat(chat.id).busy, false);
-    assert.equal(governance.settings().preferences.public, 'azure');
-    assert.equal(governance.settings().routes.azure.enabled, true);
+    assert.equal(governance.settings().preferences.public, 'global');
+    assert.equal(governance.settings().routes.global.baseUrl, 'https://example.openai.azure.com/openai/v1');
     const draft = governance.draft();
     draft.levelDefinitions.push({ id: 'Review', name: 'Review', baseLevel: 'Public' });
     for (const key of ['allowedModels', 'allowedTools', 'allowedEnvironments']) draft[key].Review = [...draft[key].Public];

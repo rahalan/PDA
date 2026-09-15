@@ -31,7 +31,7 @@ async function identityNavigation() {
     document.querySelector('.toplinks')?.append(logout);
   }
 }
-function routeText(route, source) { return source === 'governance' ? 'Governance refusal' : route ? `GitHub Copilot SDK · ${route.name} / ${route.model}` : ''; }
+function routeText(route, source) { return source === 'governance' ? 'Governance refusal' : route ? `${route.name} · ${route.geography}${route.simulated ? ' · simulated' : ''}` : ''; }
 function message(parent, role, text, footer = '') {
   const article = node('article', '', `message message--${role}`);
   const head = node('div', '', 'message__head'); head.append(node('span', role === 'user' ? 'You' : 'Assistant'), node('span', footer));
@@ -183,35 +183,18 @@ export function mountAdminPage() {
   function renderSettings() {
     const root = $('routeSettings'); root.replaceChildren(); const settings = state.settings;
     const choices = Object.values(settings.routes).map(r => ({ id: r.id, name: r.name }));
-    const euOrder = settings.euRouting.order;
-    const euChoices = euOrder.map(id => ({ id, name: settings.routes[id].name }));
-    const routing = node('article', '', 'list-item');
-    routing.append(node('h3', 'EU route pool'), node('p', 'Cost scores are administrator-maintained relative estimates, not live quota data. Lower scores route first; priority order breaks ties and controls priority mode.', 'note'),
-      field('Selection strategy', select('euRoutingStrategy', [{ id: 'cost', name: 'Lowest configured cost' }, { id: 'priority', name: 'Configured priority' }], settings.euRouting.strategy)),
-      field('Automatic fallback', input('euFallbackEnabled', settings.euRouting.fallbackEnabled, 'checkbox')));
-    euOrder.forEach((routeId, index) => routing.append(field(`Priority ${index + 1}`, select(`euRouteOrder_${index}`, euChoices, routeId))));
-    root.append(routing);
-    for (const [id, label, value] of [['publicRoute', 'Public model preference', settings.preferences.public], ['internalRoute', 'Internal model preference', settings.preferences.internal], ['highRoute', 'Highly Confidential model preference', settings.preferences.high]]) root.append(field(label, select(id, choices, value)));
+    root.append(node('p', 'All three routes are Azure OpenAI / AI Foundry deployments on one account, authenticated with the app\u2019s managed identity. The Global route is public cloud; the EU route runs in an EU region for genuine EU residency; the On-premises route is simulated, because a cloud region is not on-premises.', 'note'));
+    for (const [id, label, value] of [['publicRoute', 'Public model preference', settings.preferences.public], ['internalRoute', 'Internal (EU) model preference', settings.preferences.internal], ['highRoute', 'Highly Confidential (on-premises) model preference', settings.preferences.high]]) root.append(field(label, select(id, choices, value)));
     for (const r of Object.values(settings.routes)) {
-      const remote = Object.prototype.hasOwnProperty.call(settings.secrets.routeApiKeyPresent, r.id);
-      const pooled = euOrder.includes(r.id);
-      const note = remote ? 'Provider location is declared, not independently attested. Key protected by the configured storage protector.' : r.kind === 'ollama' ? 'Ollama at the configured endpoint; hosting location determines residency.' : r.kind === 'azure' ? 'Azure OpenAI using managed identity in Azure; Public route only.' : 'Existing Copilot sign-in · Local hosting, Public synthetic data only.';
-      const card = node('article', '', 'list-item'); card.append(node('h3', r.name), badge(r.geography), node('p', note, 'note'));
-      card.append(field('Name', input(`routeName_${r.id}`, r.name)), field('Model', input(`routeModel_${r.id}`, r.model)), field('Endpoint (approved host)', input(`routeBaseUrl_${r.id}`, r.baseUrl)), field('Enabled', input(`routeEnabled_${r.id}`, r.enabled, 'checkbox')));
-      if (pooled) { const cost = input(`routeCost_${r.id}`, r.costScore, 'number'); cost.min = '0'; cost.step = '0.001'; card.append(field('Relative cost score', cost)); }
-      if (remote) { const key = input(`routeKey_${r.id}`, '', 'password'); key.autocomplete = 'new-password'; key.placeholder = settings.secrets.routeApiKeyPresent[r.id] ? 'Encrypted key stored · blank preserves it' : 'Enter API key'; card.append(field(`${r.name} API key`, key)); }
+      const card = node('article', '', 'list-item');
+      card.append(node('h3', r.name), badge(r.geography), r.simulated ? badge('Simulated', 'warning') : badge('Genuine', 'success'), node('p', r.simulated ? 'Simulated residency: the deployment runs in the cloud, not on-premises.' : 'Azure OpenAI deployment via managed identity; residency is genuine for this region.', 'note'));
+      card.append(field('Name', input(`routeName_${r.id}`, r.name)), field('Deployment (model)', input(`routeModel_${r.id}`, r.model)), field('Enabled', input(`routeEnabled_${r.id}`, r.enabled, 'checkbox')));
       const result = node('div', '', 'note'); card.append(button('Probe / check model', async e => { e.target.disabled = true; try { const x = await api(`/api/routes/${r.id}/probe`, 'POST', {}); result.replaceChildren(badge(x.ok ? 'Check passed' : 'Unavailable', x.ok ? 'success' : 'danger'), node('p', x.message), ...(x.models ? [details(`${x.models.length} available models`, x.models.map(m => m.name || m.id).join('\n'))] : [])); } catch(error) { result.textContent = error.message; } finally { e.target.disabled = false; } }), result);
-      if (remote) card.append(button('Clear key', async () => { if (!confirm(`Remove the encrypted ${r.name} key?`)) return; try { await api('/api/settings', 'PUT', { clearRouteApiKeys: [r.id] }); await load(); status('Encrypted key removed', 'success'); } catch(e) { status(e.message, 'danger'); } }));
       root.append(card);
     }
     root.append(button('Save settings', async e => { e.target.disabled = true; try {
-      const order = euOrder.map((_, index) => $(`euRouteOrder_${index}`).value);
-      if (new Set(order).size !== order.length) throw new Error('Choose each EU provider exactly once in priority order.');
       const payload = { publicRoute: $('publicRoute').value, internalRoute: $('internalRoute').value, highRoute: $('highRoute').value,
-        euRouting: { strategy: $('euRoutingStrategy').value, fallbackEnabled: $('euFallbackEnabled').checked, order },
-        routes: Object.values(settings.routes).map(r => ({ id: r.id, name: $(`routeName_${r.id}`).value, model: $(`routeModel_${r.id}`).value, baseUrl: $(`routeBaseUrl_${r.id}`).value, enabled: $(`routeEnabled_${r.id}`).checked, ...(euOrder.includes(r.id) ? { costScore: Number($(`routeCost_${r.id}`).value) } : {}) })),
-        routeApiKeys: {} };
-      Object.keys(settings.secrets.routeApiKeyPresent).forEach(id => { if ($(`routeKey_${id}`).value) payload.routeApiKeys[id] = $(`routeKey_${id}`).value; });
+        routes: Object.values(settings.routes).map(r => ({ id: r.id, name: $(`routeName_${r.id}`).value, model: $(`routeModel_${r.id}`).value, enabled: $(`routeEnabled_${r.id}`).checked })) };
       await api('/api/settings', 'PUT', payload); await load(); status('Settings saved', 'success');
     } catch(error) { status(error.message, 'danger'); } finally { e.target.disabled = false; } }, 'primary'));
     $('toolCatalog').replaceChildren(...state.tools.map(t => { const n = node('article', '', 'list-item'); n.append(node('h3', t.name), node('p', `${t.minimumLevel} · ${t.sovereignty} · ${t.endpoint}`), node('p', t.description, 'note')); return n; }));

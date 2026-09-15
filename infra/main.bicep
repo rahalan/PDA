@@ -1,4 +1,4 @@
-metadata description = 'PDA governance demo — Azure Container Apps hosting with Key Vault protection for secrets, an unused archive container, and optional cloud GPU Ollama. Built from Azure Verified Modules.'
+metadata description = 'PDA governance demo — Azure Container Apps hosting with Key Vault protection for secrets, an unused archive container, and three managed-identity Azure OpenAI model routes (global/eu/onprem). Built from Azure Verified Modules.'
 
 targetScope = 'resourceGroup'
 
@@ -33,38 +33,6 @@ param hostGeography string = 'Public cloud'
 @description('Container registry name. Leave empty to derive one; the pipeline passes a deterministic name so it can build and push before this deployment runs.')
 param acrName string = ''
 
-@description('Run the Ollama route on a serverless GPU profile (fast, requires GPU quota in the target region). When false (default), Ollama runs CPU-only on the Consumption profile: no GPU quota, but slower. Azure is not on-premises either way.')
-param ollamaUseGpu bool = false
-
-@description('Container image for the Ollama route.')
-param ollamaImage string = 'docker.io/ollama/ollama:0.3.14'
-
-@description('Model tag used by both the Azure Ollama container and the application. Azure is not on-premises.')
-param ollamaModel string = 'llama3.1'
-
-@description('Serverless GPU workload profile type for the Ollama route when ollamaUseGpu is true. Requires GPU quota in the target region.')
-param ollamaGpuWorkloadProfileType string = 'Consumption-GPU-NC8as-T4'
-
-@description('Workload profile type for the Ollama route when ollamaUseGpu is false. Defaults to the serverless "Consumption" profile (CPU, scale-to-zero, no GPU quota, max 4 vCPU / 8Gi). Set a dedicated type such as "D4" for more capacity, which bills for reserved nodes.')
-param ollamaCpuWorkloadProfileType string = 'Consumption'
-
-@description('vCPU allocated to the Ollama container on the GPU profile (must fit the chosen GPU profile).')
-param ollamaGpuCpu int = 8
-
-@description('Memory allocated to the Ollama container on the GPU profile (must fit the chosen GPU profile).')
-param ollamaGpuMemory string = '56Gi'
-
-@description('vCPU allocated to the Ollama container on the CPU (Consumption) profile. The Consumption profile allows at most 4 vCPU.')
-param ollamaCpuCores int = 4
-
-@description('Memory allocated to the Ollama container on the CPU (Consumption) profile. The Consumption profile allows at most 8Gi.')
-param ollamaCpuMemory string = '8Gi'
-
-@description('Minimum Ollama replicas. 0 costs least but the first request must wait for a GPU cold start and the model download, which exceeds the bounded provider timeout; use 1 to keep the route warm for a demo.')
-@minValue(0)
-@maxValue(1)
-param ollamaMinReplicas int = 0
-
 @description('Name of the Key Vault key that wraps the application data-encryption key.')
 param kekName string = 'pda-kek'
 
@@ -75,16 +43,13 @@ param immutabilityDays int = 365
 @description('Emit a non-authoritative OpenTelemetry mirror of ledger appends to Application Insights.')
 param enableOpenTelemetry bool = true
 
-@description('Provision an Azure OpenAI (AI Foundry) account + deployment to serve the cloud Public route via managed identity.')
-param deployAzureOpenAI bool = false
+@description('Provision an Azure OpenAI (AI Foundry) account + three model deployments (global/eu/onprem) served via managed identity.')
+param deployAzureOpenAI bool = true
 
 @description('Existing Azure OpenAI v1 endpoint to use instead of provisioning one (e.g. https://<res>.openai.azure.com/openai/v1). Ignored when deployAzureOpenAI is true.')
 param azureOpenAiEndpoint string = ''
 
-@description('Model deployment name the Public route targets.')
-param azureOpenAiDeployment string = 'gpt-4.1-mini'
-
-@description('Model name deployed when deployAzureOpenAI is true.')
+@description('Model name deployed for all three deployments (global/eu/onprem) when deployAzureOpenAI is true.')
 param azureOpenAiModel string = 'gpt-4.1-mini'
 
 @description('Model version deployed when deployAzureOpenAI is true.')
@@ -111,24 +76,9 @@ var appInsightsName = '${namePrefix}-appi-${suffix}'
 var identityName = '${namePrefix}-id-${suffix}'
 var environmentName = '${namePrefix}-env-${suffix}'
 var webAppName = '${namePrefix}-web'
-var ollamaAppName = '${namePrefix}-ollama'
 var stateShareName = 'pda-state'
-var ollamaShareName = 'ollama-models'
 var archiveContainerName = 'compliance-archive'
 var consumptionProfileName = 'Consumption'
-var gpuProfileName = 'gpu'
-var cpuProfileName = 'ollama-cpu'
-// ollamaUseGpu selects the GPU or CPU profile type; the CPU 'Consumption' default reuses the shared serverless profile so no extra profile is added.
-var ollamaProfileType = ollamaUseGpu ? ollamaGpuWorkloadProfileType : ollamaCpuWorkloadProfileType
-var ollamaProfileName = ollamaProfileType == consumptionProfileName ? consumptionProfileName : (ollamaUseGpu ? gpuProfileName : cpuProfileName)
-var ollamaExtraProfiles = ollamaProfileType == consumptionProfileName ? [] : [
-  {
-    name: ollamaProfileName
-    workloadProfileType: ollamaProfileType
-    minimumCount: 0
-    maximumCount: 1
-  }
-]
 var azureAccountName = take(toLower(replace('${namePrefix}aoai${suffix}', '-', '')), 63)
 
 // -------------------------------------------------------------------------------------------------
@@ -279,11 +229,6 @@ module storage 'br/public:avm/res/storage/storage-account:0.33.0' = {
           accessTier: 'TransactionOptimized'
           shareQuota: 100
         }
-        {
-          name: ollamaShareName
-          accessTier: 'TransactionOptimized'
-          shareQuota: 200
-        }
       ]
     }
     roleAssignments: [
@@ -325,7 +270,31 @@ module azureOpenAi 'br/public:avm/res/cognitive-services/account:0.19.0' = if (d
     publicNetworkAccess: 'Enabled'
     deployments: [
       {
-        name: azureOpenAiDeployment
+        name: 'global'
+        model: {
+          format: 'OpenAI'
+          name: azureOpenAiModel
+          version: azureOpenAiModelVersion
+        }
+        sku: {
+          name: 'Standard'
+          capacity: azureOpenAiCapacity
+        }
+      }
+      {
+        name: 'eu'
+        model: {
+          format: 'OpenAI'
+          name: azureOpenAiModel
+          version: azureOpenAiModelVersion
+        }
+        sku: {
+          name: 'Standard'
+          capacity: azureOpenAiCapacity
+        }
+      }
+      {
+        name: 'onprem'
         model: {
           format: 'OpenAI'
           name: azureOpenAiModel
@@ -374,102 +343,18 @@ module environment 'br/public:avm/res/app/managed-environment:0.16.0' = {
         identity.outputs.resourceId
       ]
     }
-    workloadProfiles: concat(
-      [
-        {
-          name: consumptionProfileName
-          workloadProfileType: 'Consumption'
-        }
-      ],
-      ollamaExtraProfiles
-    )
+    workloadProfiles: [
+      {
+        name: consumptionProfileName
+        workloadProfileType: 'Consumption'
+      }
+    ]
     storages: [
       {
         kind: 'SMB'
         accessMode: 'ReadWrite'
         name: stateShareName
         storageAccountName: storage.outputs.name
-      }
-      {
-        kind: 'SMB'
-        accessMode: 'ReadWrite'
-        name: ollamaShareName
-        storageAccountName: storage.outputs.name
-      }
-    ]
-  }
-}
-
-// -------------------------------------------------------------------------------------------------
-// Cloud Ollama route (serverless GPU) — internal ingress only
-// -------------------------------------------------------------------------------------------------
-module ollamaApp 'br/public:avm/res/app/container-app:0.23.0' = {
-  name: 'ollamaApp'
-  params: {
-    name: ollamaAppName
-    location: location
-    tags: tags
-    environmentResourceId: environment.outputs.resourceId
-    workloadProfileName: ollamaProfileName
-    activeRevisionsMode: 'Single'
-    ingressExternal: false
-    ingressTargetPort: 11434
-    ingressTransport: 'http'
-    ingressAllowInsecure: false
-    managedIdentities: {
-      userAssignedResourceIds: [
-        identity.outputs.resourceId
-      ]
-    }
-    scaleSettings: {
-      minReplicas: ollamaMinReplicas
-      maxReplicas: 1
-    }
-    volumes: [
-      {
-        name: 'models'
-        storageType: 'AzureFile'
-        storageName: ollamaShareName
-      }
-    ]
-    containers: [
-      {
-        name: 'ollama'
-        image: ollamaImage
-        command: [
-          '/bin/sh'
-        ]
-        args: [
-          '-c'
-          'ollama serve & server_pid=$!; trap "kill $server_pid" TERM INT EXIT; timeout 60 sh -c \'until ollama ls >/dev/null 2>&1; do sleep 1; done\' && timeout 900 ollama pull "$PDA_OLLAMA_MODEL" || exit 1; wait "$server_pid"'
-        ]
-        resources: ollamaUseGpu ? {
-          cpu: ollamaGpuCpu
-          memory: ollamaGpuMemory
-        } : {
-          cpu: ollamaCpuCores
-          memory: ollamaCpuMemory
-        }
-        env: [
-          {
-            name: 'OLLAMA_HOST'
-            value: '0.0.0.0:11434'
-          }
-          {
-            name: 'OLLAMA_MODELS'
-            value: '/root/.ollama/models'
-          }
-          {
-            name: 'PDA_OLLAMA_MODEL'
-            value: ollamaModel
-          }
-        ]
-        volumeMounts: [
-          {
-            volumeName: 'models'
-            mountPath: '/root/.ollama'
-          }
-        ]
       }
     ]
   }
@@ -479,14 +364,12 @@ module ollamaApp 'br/public:avm/res/app/container-app:0.23.0' = {
 // Web application (governance demo)
 // -------------------------------------------------------------------------------------------------
 var webFqdn = '${webAppName}.${environment.outputs.defaultDomain}'
-var ollamaBase = 'https://${ollamaApp.outputs.fqdn}/v1'
 
 var baseEnv = [
   { name: 'PDA_AUTH_TENANT_ID', value: authTenantId }
   { name: 'PDA_AUTH_CLIENT_ID', value: authClientId }
   { name: 'PDA_HOST_GEOGRAPHY', value: hostGeography }
-  { name: 'PDA_OLLAMA_GEOGRAPHY', value: hostGeography }
-  { name: 'PDA_OLLAMA_MODEL', value: ollamaModel }
+  { name: 'PDA_SIMULATE_SOVEREIGNTY', value: '1' }
   {
     name: 'PDA_ALLOW_REMOTE'
     value: '1'
@@ -539,24 +422,10 @@ var baseEnv = [
 
 var webEnv = concat(
   baseEnv,
-  [
-    {
-      name: 'PDA_OLLAMA_BASE'
-      value: ollamaBase
-    }
-  ],
   azureEnabled ? [
     {
       name: 'AZURE_OPENAI_ENDPOINT'
       value: azureEndpointEffective
-    }
-    {
-      name: 'AZURE_OPENAI_DEPLOYMENT'
-      value: azureOpenAiDeployment
-    }
-    {
-      name: 'PDA_PUBLIC_ROUTE'
-      value: 'azure'
     }
   ] : []
 )

@@ -2,9 +2,6 @@ $ErrorActionPreference = 'Stop'
 if (Get-NetTCPConnection -State Listen -LocalPort 8110 -ErrorAction SilentlyContinue) {
 	throw 'Port 8110 is already in use. The demo was not started again.'
 }
-if (-not (Get-NetTCPConnection -State Listen -LocalPort 11434 -ErrorAction SilentlyContinue)) {
-	Start-Process ollama serve -Environment @{ OLLAMA_MAX_VRAM = '42949672960' } -WindowStyle Hidden
-}
 Start-Process node "`"$PSScriptRoot\server.mjs`"" -WorkingDirectory $PSScriptRoot -WindowStyle Hidden
 # The server window is hidden, so surface startup failures (for example a held writer.lock) here.
 $deadline = (Get-Date).AddSeconds(20)

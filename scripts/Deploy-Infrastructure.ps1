@@ -5,7 +5,8 @@
     Runs a resource-group scoped Bicep deployment that provisions Log Analytics,
     Application Insights, Key Vault, Storage (SMB state share + unused archive
     container), Container Registry, a user-assigned identity, the Container Apps
-    environment, the web app, and the Ollama route (CPU by default, optional serverless GPU).
+    environment, the web app, and an Azure OpenAI account with three managed-identity
+    model deployments (global/eu/onprem).
     Publishes the resulting web URL to the GitHub step output 'webUrl'.
 #>
 
@@ -26,10 +27,6 @@ $templateParameters = @{
     namePrefix                   = $config.NamePrefix
     acrName                      = $config.AcrName
     webImage                     = $webImage
-    ollamaUseGpu                 = ($config.OllamaUseGpu -eq 'true')
-    ollamaModel                  = $config.OllamaModel
-    ollamaGpuWorkloadProfileType = $config.OllamaGpuProfileType
-    ollamaCpuWorkloadProfileType = $config.OllamaCpuProfileType
 }
 # Role assignments require the *service principal* (Enterprise App) object ID. A raw
 # DEPLOYER_PRINCIPAL_ID variable often holds the App Registration's *Application* object ID,
@@ -47,17 +44,17 @@ if (-not [string]::IsNullOrWhiteSpace($deployerObjectId)) {
 if ($config.DeployAzureOpenAI -eq 'true') {
     $templateParameters.deployAzureOpenAI      = $true
     $templateParameters.azureOpenAiModel       = $config.AzureOpenAiModel
-    $templateParameters.azureOpenAiDeployment  = $config.AzureOpenAiDeployment
     $templateParameters.azureOpenAiModelVersion = Get-OptionalEnv 'PDA_AZURE_OPENAI_MODEL_VERSION' '2025-04-14'
     $templateParameters.azureOpenAiCapacity    = [int](Get-OptionalEnv 'PDA_AZURE_OPENAI_CAPACITY' '10')
 }
 elseif (-not [string]::IsNullOrWhiteSpace($config.AzureOpenAiEndpoint)) {
+    # Bring-your-own endpoint: do not also provision an account (deployAzureOpenAI defaults to true).
+    $templateParameters.deployAzureOpenAI = $false
     # The app rejects anything but this exact form, so fail here instead of at container start.
     if ($config.AzureOpenAiEndpoint -notmatch '^https://[a-z0-9][a-z0-9-]*\.openai\.azure\.com/openai/v1$') {
         throw "PDA_AZURE_OPENAI_ENDPOINT must be exactly https://<resource>.openai.azure.com/openai/v1 (no trailing slash). Got: $($config.AzureOpenAiEndpoint)"
     }
     $templateParameters.azureOpenAiEndpoint   = $config.AzureOpenAiEndpoint
-    $templateParameters.azureOpenAiDeployment = $config.AzureOpenAiDeployment
 }
 else {
     throw 'Configure PDA_DEPLOY_AZURE_OPENAI=true or PDA_AZURE_OPENAI_ENDPOINT. Cloud Copilot login is disabled.'

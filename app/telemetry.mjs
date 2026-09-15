@@ -31,6 +31,8 @@ function projectAttributes(record) {
     'pda.tool_id': record.toolId,
     'pda.http_status': record.httpStatus,
     'pda.provider_detail': record.detail,
+    'pda.geography': record.geography,
+    'pda.simulated': record.simulated,
   };
   for (const [key, value] of Object.entries(optional)) {
     if (value !== undefined && value !== null && value !== '') {

@@ -29,8 +29,7 @@ Infrastructure as Code (Bicep + Azure Verified Modules).
 | Component | Azure service | Purpose |
 | --- | --- | --- |
 | Web app (governance agent) | Azure Container Apps (Consumption profile) | Serves the chat/Admin/Compliance UI and the governed agent loop |
-| Cloud Public model route | Azure OpenAI / AI Foundry | Serves the Public route via **managed identity** (no key, no personal sign-in) |
-| Azure Ollama route | Azure Container Apps (CPU Consumption profile by default; optional serverless GPU) | Cloud-hosted inference, internal ingress only; cannot satisfy on-premises requirements |
+| Three model routes (`global`/`eu`/`onprem`) | Azure OpenAI / AI Foundry — three `gpt-4.1-mini` deployments on one account | Served via **managed identity** (no keys, no personal sign-in); `global` = Public cloud, `eu` = genuine EU residency, `onprem` = simulated on-premises |
 | At-rest key material | Azure Key Vault | RSA key-encryption key (KEK) that wraps the app data-encryption key |
 | Live state | Azure Storage — Azure Files (SMB) | Persists signing key, ledger, checkpoint and secrets across revisions |
 | Archive placeholder | Azure Storage — Blob | Unused container with an unlocked retention policy; no uploader or immutable evidence |
@@ -47,7 +46,6 @@ flowchart TB
     subgraph rg[Resource group]
         subgraph env[Container Apps environment]
             web["Web app<br/>Consumption profile<br/>external ingress :443 → :8110"]
-            ollama["Ollama route<br/>CPU (default) or GPU profile<br/>internal ingress :11434"]
         end
 
         acr[(Container Registry)]
@@ -57,37 +55,29 @@ flowchart TB
         uami{{User-assigned<br/>managed identity}}
         logs[(Log Analytics)]
         appi[(Application Insights)]
-        aoai[[Azure OpenAI / AI Foundry<br/>Public route · managed identity]]
+        aoai[[Azure OpenAI / AI Foundry<br/>deployments: global · eu · onprem<br/>managed identity]]
     end
 
-    ext2[[Mistral / SimpleLLM EU routes]]
     entra[[Entra EasyAuth and app roles]]
-    dockerhub[[Docker Hub Ollama image]]
 
     user -->|HTTPS sign-in| entra
     entra -->|signed ID token| web
     web -->|wrap/unwrap data key| kv
     web -->|mount /state| files
-    web -->|governed cloud inference| ollama
-    web -->|governed Public route| aoai
-    web -.->|governed EU routes| ext2
+    web -->|governed model routes| aoai
     web -->|pull image| acr
-    ollama -->|pull image| dockerhub
     web --> appi
     web --> logs
-    ollama --> logs
     uami -.->|federated access| kv
     uami -.-> acr
     uami -.->|AAD token| aoai
-
-    classDef ext stroke-dasharray: 4 3;
-    class ext2,dockerhub ext;
 ```
 
-The configured local Copilot route uses personal sign-in; this implementation does
-not provision that authentication in Container Apps. In cloud mode it is disabled,
-and the Public route is served by **Azure
-OpenAI via managed identity**. Copilot remains a local-only route. See
+All three model routes are Azure OpenAI / AI Foundry deployments on one account,
+served by the app's **managed identity** (no keys, no personal sign-in). They differ
+only by deployment name and the governed geography they represent: `global`
+(Public cloud), `eu` (EU-only, genuine because the account runs in an EU region) and
+`onprem` (On-premises, **simulated** — a cloud region is not on-premises). See
 [limitations](#design-decisions-and-honest-limitations).
 
 ## Request and inference flow
@@ -102,14 +92,13 @@ OpenAI via managed identity**. Copilot remains a local-only route. See
   session-authenticated `POST` whose `Origin` is not approved; the web app's own FQDN is
   therefore listed in `login.allowedExternalRedirectUrls`, otherwise every browser API
   write returns an empty `403`.
-3. For non-Copilot routes the SDK is pointed at an **in-process proxy**
-   (`/internal/model/<token>/v1`) on the same container, which performs the actual,
-   policy-checked egress:
-   - **Public** → Azure OpenAI using managed identity.
-   - **Permitted cloud workload** → Ollama only if host and route geography satisfy policy.
-   - **On-premises / country-restricted fixture** → refusal, not cloud inference.
-   - **EU** → Mistral or SimpleLLM (declared EU endpoints; location is a provider
-     declaration, not attested execution).
+3. The SDK is pointed at an **in-process proxy** (`/internal/model/<token>/v1`) on the
+   same container, which performs the actual, policy-checked egress to the Azure OpenAI
+   account using managed identity, selecting the deployment for the governed route:
+   - **Public** → `global` deployment (Public cloud).
+   - **Internal / EU-only** → `eu` deployment (genuine EU residency; regional `Standard` SKU keeps processing in the EU).
+   - **Highly Confidential / On-premises** → `onprem` deployment (**simulated** on-premises; labelled as simulated in the UI and ledger).
+   - **Country-restricted (Italy) fixture** → refusal, not inference.
 4. Authorization, egress, fallback and tool decisions are appended to the signed
    ledger on the Azure Files mount.
 
@@ -184,7 +173,7 @@ Role assignments (provisioned via AVM `roleAssignments`):
 | --- | --- | --- |
 | Key Vault | Key Vault Crypto User | wrap/unwrap the data-encryption key |
 | Key Vault | Key Vault Secrets User | read any future KV-sourced secrets |
-| Container Registry | AcrPull | pull the web image; Ollama currently uses Docker Hub |
+| Container Registry | AcrPull | pull the web image with the managed identity |
 | Storage account | Storage Blob Data Contributor | Provisioned archive permission, not an active upload flow |
 | Azure OpenAI | Cognitive Services OpenAI User | call the Public-route model with the managed identity |
 | Key Vault | Key Vault Secrets Officer | *(optional)* granted to the CI principal when `deployerPrincipalId` is supplied |
@@ -201,11 +190,9 @@ OpenAI accounts need an explicit operator-managed role assignment.
 - **Web app**: external ingress, HTTPS only (`ingressAllowInsecure: false`), target
   port `8110`. The app's `Host`/`Origin` guards are configured for the Container Apps
   FQDN via `PDA_ALLOWED_HOSTS` and `PDA_PUBLIC_SCHEME=https`.
-- **Ollama app**: internal ingress only (not internet-reachable), target port `11434`.
-  The web app reaches it at `https://<ollama-fqdn>/v1` inside the environment. It
-  scales to zero by default, and its startup downloads the model, so the first
-  request after idle exceeds the bounded provider attempt and is refused. Set
-  `ollamaMinReplicas=1` to keep it warm at GPU cost.
+- **Model routes**: the three deployments live on the Azure OpenAI account (not a
+  container app); the web app reaches them at the account's `/openai/v1` endpoint using
+  the managed identity. There is no internal inference container.
 - **Health probe**: `/healthz` is exempt from the host/origin guards so Container Apps
   liveness/readiness checks succeed regardless of the probe's `Host` header.
 - **Storage and Key Vault reachability**: the environment is **not** VNet-injected, so
@@ -263,46 +250,42 @@ Environment variables consumed by the app (set on the web container by Bicep):
 | `PORT` | `8110` | `8110` | Listen port (kept at 8110 so the internal proxy works) |
 | `PDA_PUBLIC_SCHEME` | `http` | `https` | Scheme used in the same-origin check |
 | `PDA_ALLOWED_HOSTS` | — | web FQDN | Extra hostnames accepted in the `Host` header |
-| `PDA_OLLAMA_BASE` | loopback | internal Ollama URL | Configured inference endpoint, not proof of sovereignty |
-| `PDA_OLLAMA_MODEL` | `qwen2.5:7b` | same tag as Ollama container | Model selection |
-| `PDA_HOST_GEOGRAPHY` | on-premises | `Public cloud` or reviewed `EU-only` | Host residency ceiling |
+| `PDA_SIMULATE_SOVEREIGNTY` | unset | `1` | Serve every governed geography (the `onprem` route is simulated) instead of refusing residencies the host cannot truly satisfy |
+| `PDA_HOST_GEOGRAPHY` | on-premises | `Public cloud` or reviewed `EU-only` | Host residency ceiling (ignored when `PDA_SIMULATE_SOVEREIGNTY=1`) |
 | `PDA_AUTH_TENANT_ID`, `PDA_AUTH_CLIENT_ID` | unset | required GUIDs | Tenant and audience for signed user ID tokens |
 | `PDA_INTERNAL_BASE` | `http://127.0.0.1:8110` | same | Base for the in-process model proxy |
 | `PDA_OTEL_ENABLED` | unset | `1` | Emit the non-authoritative OpenTelemetry ledger mirror |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | — | AI connection string | Telemetry export target |
-| `PDA_PUBLIC_ROUTE` | `copilot` | `azure` | Which route serves the Public level by default |
-| `AZURE_OPENAI_ENDPOINT` | — | AOAI v1 endpoint | Azure OpenAI base URL for the Public route |
-| `AZURE_OPENAI_DEPLOYMENT` | `gpt-4.1-mini` | deployment name | Model deployment used as the route model |
+| `AZURE_OPENAI_ENDPOINT` | — | AOAI v1 endpoint | Azure OpenAI base URL shared by all three routes (deployment names `global`/`eu`/`onprem`) |
 
 Local mode remains a trusted-workstation demo, fixed to loopback port 8110. Its
 updated runtime requires Node 22.12 or later and exclusive state ownership.
 
 ## Design decisions and honest limitations
 
-- **Copilot route in cloud**: the Public → Copilot route needs an interactive Copilot
-  sign-in that this deployment does not configure. In Azure the Public route is served
-  by **Azure OpenAI via the managed identity** (set `PDA_PUBLIC_ROUTE=azure` with an
-  `AZURE_OPENAI_ENDPOINT`); Copilot remains a local-only route. The Azure OpenAI
-  account uses AAD-only auth (`disableLocalAuth: true`) — no keys are stored.
-- **Ollama compute profile**: the Ollama route runs CPU-only on the Consumption
-  profile by default (`ollamaUseGpu = false`, no GPU quota needed but slower CPU
-  inference). Set `ollamaUseGpu = true` to run it on a serverless GPU profile, which
-  requires GPU quota and regional availability; the chosen profile type and the
-  container CPU/memory must be compatible or the deployment fails. The Consumption
-  profile caps at 4 vCPU / 8Gi, so a large model may need a smaller tag on CPU.
+- **Three model routes**: `global`, `eu` and `onprem` are all deployments on one Azure
+  OpenAI account, served by the managed identity (`disableLocalAuth: true` — no keys are
+  stored). Routing is by governed level; `PDA_SIMULATE_SOVEREIGNTY=1` lets the cloud host
+  serve every geography so the simulated `onprem` route can be demonstrated.
+- **Simulated on-premises**: the `onprem` route runs in the cloud, not on-premises, and
+  is labelled **simulated** in the Admin card, the User route footer and the Compliance
+  ledger (`pda.simulated`). It is not evidence of on-premises execution.
 - **Container image**: the runtime image installs `ca-certificates`. The Copilot SDK's
   native (Rust) HTTP client loads the system CA trust store to make outbound TLS calls,
   and the `-slim` base image omits it, so without that layer every model turn fails with
   "No CA certificates were loaded from the system".
-- **EU sovereignty**: Mistral/SimpleLLM endpoints are provider declarations, not
-  independently attested execution locations.
+- **EU residency**: the `eu` route is genuinely in the EU because the Azure OpenAI
+  account runs in an EU region and uses a regional `Standard` SKU (processed in-region),
+  not the global SKU. Residency is enforced by policy and demonstrated, not independently
+  attested.
 - **Immutability**: neither a locked archive nor an upload workflow is implemented.
   The live ledger is signed and tamper-evident, not immutable storage. Independent
   archival/retention approval remains work before claiming production compliance.
 - **Statefulness**: the design assumes a single web replica for ledger integrity; it is
   not horizontally scaled.
-- **Verification**: a live Azure deployment has been exercised — Entra sign-in with app-role
-  isolation, Key Vault KEK access, the Azure Files (SMB) state mount and the Azure OpenAI
-  Public route reaching the model (a governed tool call required adding a `required` array to
-  the strict tool schemas). GPU, the EU provider routes, telemetry delivery and recovery paths
-  were not exercised. See the deployment guide's Troubleshooting for the issues found and fixed.
+- **Verification**: an earlier single-route Azure deployment was exercised — Entra sign-in
+  with app-role isolation, Key Vault KEK access, the Azure Files (SMB) state mount and an
+  Azure OpenAI route reaching the model (governed tool calls required a `required` array on
+  the strict tool schemas, and the proxy must strip SDK-injected fields such as
+  `stream_options`/`reasoning_effort`). The three-deployment topology described here is the
+  current design; re-verify after deploying it.

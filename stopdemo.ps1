@@ -12,4 +12,4 @@ if ($owner -and $owner.host -eq [System.Net.Dns]::GetHostName() -and $owner.pid 
 	(Test-Path -LiteralPath $lockPath) -and (Get-Content -LiteralPath $lockPath -Raw) -ceq $lockText) {
 	Remove-Item -LiteralPath $lockPath -ErrorAction Stop
 }
-Write-Output 'Stopped matching demo Node processes only. Ollama remains running. Unowned or pre-existing stale locks were preserved.'
+Write-Output 'Stopped matching demo Node processes only. Unowned or pre-existing stale locks were preserved.'

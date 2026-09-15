@@ -4,14 +4,14 @@ This guide provisions the PDA governance demo to Azure Container Apps using Bice
 (Azure Verified Modules) and GitHub Actions. All Azure logic lives in PowerShell
 scripts under `scripts/`; the workflows only orchestrate them.
 
-**Validation status:** a live Azure deployment has now been exercised against a
+**Validation status:** an earlier single-route Azure deployment was exercised against a
 disposable environment. Verified there: Entra sign-in with app-role isolation, Key
-Vault KEK access, the Azure Files (SMB) state mount, and the Azure OpenAI Public
-route reaching the model (including a governed tool call once the tool schema was
-fixed). GPU readiness, the EU provider routes and telemetry delivery were not
-exercised. Several deployment and runtime issues were found and fixed along the way
-(see [Troubleshooting](#troubleshooting)); some fixes ship on the next redeploy. Use
-synthetic data only.
+Vault KEK access, the Azure Files (SMB) state mount, and an Azure OpenAI route reaching
+the model (including a governed tool call once the tool schema was fixed and the proxy
+stripped SDK-injected fields such as `stream_options`/`reasoning_effort`). The
+three-deployment topology (`global`/`eu`/`onprem`) is the current design; re-verify
+after deploying it. Several deployment and runtime issues were found and fixed along the
+way (see [Troubleshooting](#troubleshooting)). Use synthetic data only.
 
 Eight isolated source regressions cover signed user tokens and role isolation,
 HTTP identity binding, state-lock exclusion, versioned key envelopes, pinned-policy
@@ -46,9 +46,9 @@ deliberately have no secret defaults.
 A single resource-group deployment ([infra/main.bicep](../infra/main.bicep)) creates:
 Log Analytics, Application Insights, a user-assigned managed identity, Container
 Registry, Key Vault (with an RSA KEK), a Storage account (SMB state share + unused
-archive container with an unlocked retention policy), a Container Apps environment, the web app, the
-Ollama route (CPU on the Consumption profile by default, optional serverless GPU) and — optionally — an Azure OpenAI (AI Foundry) account for the cloud
-Public route. See [azure-architecture.md](azure-architecture.md) for the full picture.
+archive container with an unlocked retention policy), a Container Apps environment, the web app, and an
+Azure OpenAI (AI Foundry) account with three `gpt-4.1-mini` deployments (`global`/`eu`/`onprem`)
+served by the app's managed identity. See [azure-architecture.md](azure-architecture.md) for the full picture.
 
 Pipeline stages ([.github/workflows/deploy.yml](../.github/workflows/deploy.yml)):
 
@@ -62,10 +62,9 @@ Pipeline stages ([.github/workflows/deploy.yml](../.github/workflows/deploy.yml)
 ## Prerequisites
 
 - An Azure subscription and permission to create resources and role assignments.
-- **GPU quota** for Container Apps serverless GPU in your target region only if
-  `PDA_OLLAMA_USE_GPU=true` (e.g. `Consumption-GPU-NC8as-T4` in `swedencentral`).
-  The default (`PDA_OLLAMA_USE_GPU=false`) runs Ollama CPU-only on the Consumption
-  profile and needs no GPU quota, at the cost of slower inference.
+- **Azure OpenAI capacity** for `gpt-4.1-mini` in your target region — three deployments
+  are created (10K TPM each by default; adjust `PDA_AZURE_OPENAI_CAPACITY`). Use an EU
+  region (e.g. `swedencentral`) so the `eu` route's residency claim is genuine.
 - Azure CLI ≥ 2.60 with the Bicep CLI (only for manual deploys).
 - A GitHub repository with Actions enabled.
 - Node 22.12 or later and PowerShell 7 for manual script execution.
@@ -138,17 +137,12 @@ Variables:
 | Variable | Example | Notes |
 | --- | --- | --- |
 | `AZURE_RESOURCE_GROUP` | `pda-demo-rg` | Created if missing |
-| `AZURE_LOCATION` | `swedencentral` | Use a GPU-capable region only when `PDA_OLLAMA_USE_GPU=true` |
+| `AZURE_LOCATION` | `swedencentral` | Use an EU region so the `eu` route's residency is genuine |
 | `PDA_NAME_PREFIX` | `pda` | 2–8 lower-case chars/digits |
-| `PDA_HOST_GEOGRAPHY` | `Public cloud` | `EU-only` only after verifying hosting and data destinations; never on-premises |
-| `PDA_OLLAMA_USE_GPU` | `false` / `true` | Ollama on CPU (default) or serverless GPU |
-| `PDA_OLLAMA_MODEL` | `llama3.1` | Model pulled on start |
-| `PDA_OLLAMA_GPU_PROFILE` | `Consumption-GPU-NC8as-T4` | GPU profile used when `PDA_OLLAMA_USE_GPU=true`; must match available GPU quota |
-| `PDA_OLLAMA_CPU_PROFILE` | `Consumption` | CPU profile used when `PDA_OLLAMA_USE_GPU=false`; serverless `Consumption` or a dedicated size like `D4` |
-| `PDA_DEPLOY_AZURE_OPENAI` | `true` / `false` | Provision Azure OpenAI for the cloud Public route |
-| `PDA_AZURE_OPENAI_ENDPOINT` | *(v1 endpoint)* | Use an existing Azure OpenAI instead of provisioning |
-| `PDA_AZURE_OPENAI_DEPLOYMENT` | `gpt-4.1-mini` | Deployment name the Public route targets |
-| `PDA_AZURE_OPENAI_MODEL` | `gpt-4.1-mini` | Model to deploy when provisioning |
+| `PDA_HOST_GEOGRAPHY` | `Public cloud` | Host residency ceiling; ignored when `PDA_SIMULATE_SOVEREIGNTY=1` (set by the template) |
+| `PDA_DEPLOY_AZURE_OPENAI` | `true` / `false` | Provision the Azure OpenAI account and the three deployments (default `true`) |
+| `PDA_AZURE_OPENAI_ENDPOINT` | *(v1 endpoint)* | Use an existing Azure OpenAI account instead of provisioning; it must already have `global`/`eu`/`onprem` deployments |
+| `PDA_AZURE_OPENAI_MODEL` | `gpt-4.1-mini` | Model deployed for all three deployments when provisioning |
 | `PDA_AZURE_OPENAI_MODEL_VERSION` | `2025-04-14` | Check regional availability |
 | `PDA_AZURE_OPENAI_CAPACITY` | `10` | Thousands of tokens/minute; requires quota |
 | `DEPLOYER_PRINCIPAL_ID` | *(SP object ID)* | Optional; grants KV Secrets Officer |
@@ -170,24 +164,24 @@ Variables:
 ## 5. First-run configuration in the app
 
 1. Complete the redirect URI and sign in as an assigned Administrator.
-2. Review and **publish** a draft with `azure` allowed for Public, then start a new
-  chat. Existing signed policies and credentials are not silently rewritten; a
-  new publication issues demo credentials for current participants.
-3. In **Route settings**, enable providers and enter API keys for the EU routes
-   (Mistral / SimpleLLM). Keys are protected at rest via the Key Vault–backed
-   envelope encryption.
-4. Set the **Internal model preference** to an allowed provider, including Ollama
-  only when its actual host geography satisfies policy.
-5. Azure Ollama is not on-premises. On-premises and country-restricted fixture
-  requests are refused before model use. Their prompts have already reached the
-  cloud web server and may be persisted: use synthetic data only.
+2. The published policy already allows `global` (Public), `eu` (Internal / EU-only) and
+  `onprem` (Highly Confidential / On-premises). Start a new chat. Existing signed
+  policies and credentials are not silently rewritten.
+3. In **Route settings**, review the three routes. There are no API keys or provider
+  pools — all three use the same Azure OpenAI account via managed identity. The `eu`
+  route is genuine EU residency; the `onprem` route is labelled **simulated**.
+4. The default routing needs no changes: Public → `global`, Internal/EU → `eu`,
+  Highly Confidential → `onprem`.
+5. The `onprem` route runs in the cloud, not on-premises, and is labelled simulated.
+  Prompts reach the cloud web server and may be persisted: use synthetic data only.
 6. For an existing Azure OpenAI account, assign **Cognitive Services OpenAI User**
   to the deployed managed identity before use; the template grants this only for
   the account it provisions. Verify an actual Public turn.
 
-> The **cloud Public route** is served by **Azure OpenAI via the managed identity**
-> when `PDA_DEPLOY_AZURE_OPENAI=true` (or an existing `PDA_AZURE_OPENAI_ENDPOINT` is
-> supplied) — no keys and no interactive sign-in. The Copilot route remains local-only.
+> All three routes are served by **Azure OpenAI via the managed identity** when
+> `PDA_DEPLOY_AZURE_OPENAI=true` (the default) or an existing `PDA_AZURE_OPENAI_ENDPOINT`
+> is supplied — no keys and no interactive sign-in. The account uses AAD-only auth
+> (`disableLocalAuth: true`).
 
 ## Manual / local deployment
 
@@ -236,14 +230,10 @@ Environment variables read by the deployment scripts
 | `PDA_ACR_NAME` | no | derived | Registry name (deterministic per sub+RG if unset) |
 | `PDA_IMAGE_REPOSITORY` | no | `pda/web` | Image repository |
 | `PDA_IMAGE_TAG` | no | `GITHUB_SHA`/`local` | Image tag |
-| `PDA_OLLAMA_USE_GPU` | no | `false` | Ollama on CPU (default) or serverless GPU |
-| `PDA_OLLAMA_MODEL` | no | `llama3.1` | Ollama model |
-| `PDA_OLLAMA_GPU_PROFILE` | no | `Consumption-GPU-NC8as-T4` | GPU workload profile (used when `PDA_OLLAMA_USE_GPU=true`) |
-| `PDA_OLLAMA_CPU_PROFILE` | no | `Consumption` | CPU workload profile (used when `PDA_OLLAMA_USE_GPU=false`); serverless `Consumption` or a dedicated size |
-| `PDA_DEPLOY_AZURE_OPENAI` | no | `false` | Provision Azure OpenAI for the Public route |
-| `PDA_AZURE_OPENAI_ENDPOINT` | no | — | Existing endpoint, exactly `https://<resource>.openai.azure.com/openai/v1` (no trailing slash); the deploy script rejects other forms |
-| `PDA_AZURE_OPENAI_DEPLOYMENT` | no | `gpt-4.1-mini` | Deployment name for the Public route |
-| `PDA_AZURE_OPENAI_MODEL` | no | `gpt-4.1-mini` | Model to deploy when provisioning |
+| `PDA_DEPLOY_AZURE_OPENAI` | no | `true` | Provision the Azure OpenAI account and the three deployments |
+| `PDA_AZURE_OPENAI_ENDPOINT` | no | — | Existing endpoint, exactly `https://<resource>.openai.azure.com/openai/v1` (no trailing slash); the deploy script rejects other forms and skips provisioning. Must already have `global`/`eu`/`onprem` deployments |
+| `PDA_AZURE_OPENAI_MODEL` | no | `gpt-4.1-mini` | Model deployed for all three deployments when provisioning |
+| `PDA_AZURE_OPENAI_CAPACITY` | no | `10` | Thousands of tokens/minute per deployment |
 | `DEPLOYER_PRINCIPAL_ID` | no | — | Grants KV Secrets Officer to the deployer |
 | `PDA_WEB_IMAGE` | no | derived | Full image ref (set from the build step) |
 | `PDA_AUTH_TENANT_ID` | yes | — | Workflow maps from `AZURE_TENANT_ID` |
@@ -290,18 +280,17 @@ $env:PDA_DELETE_CONFIRM = 'delete'
   A crash between ledger append and checkpoint publication can still require
   restoration of a verified backup. Never fabricate a replacement checkpoint.
 - Tests use in-memory or temporary state. No migration of existing state, real
-  authentication, model execution, GPU validation or image CVE scan is implied.
+  authentication, model execution or image CVE scan is implied.
 
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| `az deployment` fails on GPU profile | No GPU quota in region | Request quota or set `PDA_OLLAMA_USE_GPU=false` to run Ollama CPU-only |
-| First Ollama turn refuses with a provider timeout | The GPU replica scales to zero, so the first request also waits for a cold start and the model download, which exceeds the bounded provider attempt | Deploy with `ollamaMinReplicas=1` to keep the route warm (GPU cost applies), or send one throwaway turn to trigger the pull and retry after it completes |
+| `az deployment` fails creating a model deployment | `gpt-4.1-mini` capacity/quota exhausted in the region | Lower `PDA_AZURE_OPENAI_CAPACITY` or request more quota; three deployments each consume TPM |
 | Login step fails (`AADSTS700...`) | Federated subject mismatch | Ensure the federated credential subject matches the run (environment/branch) |
 | Template role-assignment error | Deployer lacks `User Access Administrator` | Grant it at the deployment scope |
 | Web app unhealthy after deploy | Image not built / wrong port | Confirm `Build-And-PushImage` ran; probe path is `/healthz` on `8110` |
-| Public route errors in cloud | Copilot selected but no cloud model | Set `PDA_DEPLOY_AZURE_OPENAI=true` (or `PDA_AZURE_OPENAI_ENDPOINT`) so Public uses Azure OpenAI |
+| Model route errors in cloud | No Azure OpenAI account/deployments | Set `PDA_DEPLOY_AZURE_OPENAI=true` (default) or point `PDA_AZURE_OPENAI_ENDPOINT` at an account that has `global`/`eu`/`onprem` deployments |
 | Azure OpenAI 401/403 | UAMI missing role or AAD-only auth | Ensure `Cognitive Services OpenAI User` on the account; provisioning sets it automatically |
 | App can't unwrap the data key | UAMI missing KV Crypto User or wrong `AZURE_KEY_VAULT_URI` | Verify role assignment and env vars on the container app |
 | Container `VolumeMountFailure: mount error(13): Permission denied` | Storage shared-key/public access disabled or firewall `defaultAction Deny` (usually an Azure Policy) | Apply the `SecurityControl: Ignore` tag exemption; the templates set shared-key, public access and `networkAcls defaultAction Allow` |
@@ -309,4 +298,4 @@ $env:PDA_DELETE_CONFIRM = 'delete'
 | Login fails `AADSTS500113` (no reply address) / `AADSTS700054` (id_token disabled) | App registration missing the callback reply URL or ID-token issuance | Register `https://<web-fqdn>/.auth/login/aad/callback` and enable ID-token issuance; the deploy step also auto-registers the reply URL when the deployer owns the app registration |
 | New revision crash-loops `State is locked` after redeploy | Old and new revisions briefly share the state mount during a rolling deploy, or an orphaned lock remains after a crash | The deploy stops the old revisions and clears any orphaned `writer.lock` before updating; the incoming revision also waits up to 120 s for a graceful release. If it persists, deactivate the old revision and delete `writer.lock` from the `pda-state` share |
 | Chat replies "Copilot execution failed" | SDK's native HTTP client found no system CA store | The container image installs `ca-certificates`; confirm that layer is present |
-| Chat replies "Azure OpenAI rejected the request (HTTP 400)" | Strict tool schema missing a `required` array | Tool `parameters` include a `required` array listing every property |
+| Chat replies "Azure OpenAI rejected the request (HTTP 400)" | Strict tool schema missing a `required` array, or the SDK injected fields Azure rejects (`stream_options`, `reasoning_effort`, `snippy`) | Tool `parameters` include a `required` array; the proxy forwards only an allow-list of standard chat-completions fields |

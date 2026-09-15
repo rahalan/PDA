@@ -34,26 +34,26 @@ const MAX_DEFINITIONS = 8;
 const LEVEL_ID_PATTERN = /^[A-Za-z][A-Za-z0-9._:-]{0,79}$/;
 const BASE_LEVEL_RANK = new Map(LEVELS.map((level, index) => [level, index]));
 const BASE_ENVIRONMENT_RANK = new Map(ENVIRONMENTS.map((environment, index) => [environment, index]));
-const EU_POOL_ROUTE_IDS = ['simplellm'];
-const REMOTE_ROUTE_IDS = ['mistral', ...EU_POOL_ROUTE_IDS];
-const ROUTE_IDS = new Set(['copilot', 'ollama', 'azure', ...REMOTE_ROUTE_IDS]);
-const DEFAULT_PUBLIC_ENDPOINT = 'https://api.githubcopilot.com/v1';
-const DEFAULT_MISTRAL_ENDPOINT = 'https://api.mistral.ai/v1';
-const DEFAULT_OLLAMA_ENDPOINT = process.env.PDA_OLLAMA_BASE || 'http://127.0.0.1:11434/v1';
-const DEFAULT_SIMPLELLM_ENDPOINT = 'https://api.simplellm.eu/v1';
-// Azure OpenAI / AI Foundry OpenAI-compatible v1 endpoint. Authenticated with the
-// app's managed identity (no API key). Empty locally, set by the container.
+// The three governed model routes are all Azure OpenAI / AI Foundry deployments on one account,
+// authenticated with the app's managed identity (no API keys). They differ only by deployment name
+// (model) and the sovereignty they represent: global (Public cloud), eu (EU-only, genuinely in-EU
+// because the account runs in an EU region) and onprem (On-premises, simulated in the cloud).
+const EU_POOL_ROUTE_IDS = [];
+const REMOTE_ROUTE_IDS = [];
+const ROUTE_IDS = new Set(['global', 'eu', 'onprem']);
+// Azure OpenAI / AI Foundry OpenAI-compatible v1 endpoint. Empty locally, set by the container.
 const DEFAULT_AZURE_ENDPOINT = process.env.AZURE_OPENAI_ENDPOINT || '';
 const CLOUD_HOST = process.env.PDA_ALLOW_REMOTE === '1';
+// When set, the cloud host serves every governed geography (including the simulated On-premises
+// route) instead of refusing residencies a real cloud host could not honestly satisfy.
+const SIMULATE_SOVEREIGNTY = process.env.PDA_SIMULATE_SOVEREIGNTY === '1';
 const HOST_GEOGRAPHY = CLOUD_HOST ? (process.env.PDA_HOST_GEOGRAPHY || 'Public cloud') : 'On-premises';
 const CREDENTIAL_ISSUER = 'CG Demo Credential Authority';
 const CREDENTIAL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const PARTICIPANTS = [
-  { id: 'copilot', label: 'GitHub Copilot', kind: 'model' },
-  { id: 'ollama', label: 'Ollama', kind: 'model' },
-  { id: 'azure', label: 'Azure OpenAI', kind: 'model' },
-  { id: 'mistral', label: 'Mistral', kind: 'model' },
-  { id: 'simplellm', label: 'SimpleLLM', kind: 'model' },
+  { id: 'global', label: 'Global model (Public cloud)', kind: 'model' },
+  { id: 'eu', label: 'EU model (EU-only)', kind: 'model' },
+  { id: 'onprem', label: 'On-premises model (simulated)', kind: 'model' },
   { id: 'weather', label: 'Weather tool', kind: 'tool' },
   { id: 'sales', label: 'Sales tool', kind: 'tool' },
   { id: 'public_send', label: 'Public send tool', kind: 'tool' },
@@ -158,8 +158,6 @@ export class Governance {
 
   updateSettings(body = {}) {
     const next = this._clone(this._settings);
-    const pendingKeys = new Map();
-    const clearedKeys = new Set();
     if (body.routes) {
       this._applyRouteSettings(next, body.routes);
     }
@@ -172,73 +170,7 @@ export class Governance {
     if (body.highRoute) {
       next.preferences.high = this._assertRouteId(body.highRoute, 'high route');
     }
-    if (body.euRouting) {
-      this._applyEuRoutingSettings(next, body.euRouting);
-    }
-    if (body.routeApiKeys && typeof body.routeApiKeys === 'object' && !Array.isArray(body.routeApiKeys)) {
-      for (const [routeId, value] of Object.entries(body.routeApiKeys)) {
-        this._assertRemoteRouteId(routeId);
-        if (value !== '') {
-          pendingKeys.set(routeId, value);
-          clearedKeys.delete(routeId);
-          next.secrets.routeApiKeyPresent[routeId] = true;
-        }
-      }
-    }
-    if (Array.isArray(body.clearRouteApiKeys)) {
-      for (const routeId of body.clearRouteApiKeys) {
-        this._assertRemoteRouteId(routeId);
-        pendingKeys.delete(routeId);
-        clearedKeys.add(routeId);
-        next.secrets.routeApiKeyPresent[routeId] = false;
-      }
-    }
-    if (Object.prototype.hasOwnProperty.call(body, 'mistralApiKey')) {
-      if (body.clearMistralKey === true || body.mistralApiKey === null) {
-        next.secrets.mistralApiKeyPresent = false;
-        next.secrets.routeApiKeyPresent.mistral = false;
-        pendingKeys.delete('mistral');
-        clearedKeys.add('mistral');
-      } else if (body.mistralApiKey !== '') {
-        next.secrets.mistralApiKeyPresent = true;
-        next.secrets.routeApiKeyPresent.mistral = true;
-        pendingKeys.set('mistral', body.mistralApiKey);
-        clearedKeys.delete('mistral');
-      }
-    } else if (body.clearMistralKey === true) {
-      next.secrets.mistralApiKeyPresent = false;
-      next.secrets.routeApiKeyPresent.mistral = false;
-      pendingKeys.delete('mistral');
-      clearedKeys.add('mistral');
-    }
-
-    if (body.publicEnabled !== undefined) {
-      next.routes.copilot.enabled = Boolean(body.publicEnabled);
-    }
-    if (body.ollamaEnabled !== undefined) {
-      next.routes.ollama.enabled = Boolean(body.ollamaEnabled);
-    }
-    if (body.mistralEnabled !== undefined) {
-      next.routes.mistral.enabled = Boolean(body.mistralEnabled);
-    }
-    if (body.publicModel) {
-      next.routes.copilot.model = String(body.publicModel);
-    }
-    if (body.ollamaModel) {
-      next.routes.ollama.model = String(body.ollamaModel);
-    }
-    if (body.mistralModel) {
-      next.routes.mistral.model = String(body.mistralModel);
-    }
-
     this._validateSettings(next);
-    for (const routeId of clearedKeys) {
-      this.store.setSecret(this._routeSecretName(routeId), undefined);
-    }
-    for (const [routeId, value] of pendingKeys) {
-      this.store.setSecret(this._routeSecretName(routeId), value);
-    }
-    next.secrets.mistralApiKeyPresent = next.secrets.routeApiKeyPresent.mistral;
     this._settings = next;
     this.store.save('settings', next);
     this.store.append('settings-updated', { settings: this._sanitizeSettings(next) });
@@ -425,7 +357,9 @@ export class Governance {
     const state = this._stateForChat(chat);
     if (state.blocked) throw this._routeError('SOVEREIGNTY_CONFLICT', state.conflictReason || 'Conflicting sovereignty restrictions remain in this chat.');
     const policy = this._policyForChat(state).payload;
-    if (CLOUD_HOST && (this._rankSovereignty(state.sovereignty, policy) > this._baseEnvironmentRank(HOST_GEOGRAPHY)
+    // In simulation the host serves every governed geography (the On-premises route is simulated);
+    // otherwise a real cloud host honestly refuses residencies it cannot satisfy.
+    if (!SIMULATE_SOVEREIGNTY && CLOUD_HOST && (this._rankSovereignty(state.sovereignty, policy) > this._baseEnvironmentRank(HOST_GEOGRAPHY)
       || state.restrictions?.some(restriction => ['IT', 'DE'].includes(restriction)))) {
       throw this._routeError('HOST_NOT_PERMITTED', 'This cloud host cannot satisfy the requested residency. Use an approved local deployment; no model was called.');
     }
@@ -613,26 +547,12 @@ export class Governance {
     const saved = this.store.load('policy-draft', null);
     const draft = saved ? this._clone(saved) : this._createDraftFromActive();
     let changed = !saved;
-    if (DEFAULT_AZURE_ENDPOINT && Array.isArray(draft.allowedModels?.Public) && !draft.allowedModels.Public.includes('azure')) {
-      draft.allowedModels.Public.push('azure');
-      changed = true;
-    }
     for (const [levelId, models] of Object.entries(draft.allowedModels ?? {})) {
       if (!Array.isArray(models)) continue;
       const activeModels = models.filter(routeId => ROUTE_IDS.has(routeId));
       if (activeModels.length !== models.length) {
         draft.allowedModels[levelId] = activeModels;
         changed = true;
-      }
-    }
-    for (const levelId of ['Public', 'Internal']) {
-      const models = draft.allowedModels?.[levelId];
-      if (!Array.isArray(models) || !models.includes('mistral')) continue;
-      for (const routeId of EU_POOL_ROUTE_IDS) {
-        if (!models.includes(routeId)) {
-          models.push(routeId);
-          changed = true;
-        }
       }
     }
     if (changed) {
@@ -652,10 +572,9 @@ export class Governance {
         ? saved.routes.filter(config => ROUTE_IDS.has(config?.id ?? config?.routeId))
         : Object.fromEntries(Object.entries(saved.routes).filter(([routeId]) => ROUTE_IDS.has(routeId)));
       const entries = Array.isArray(activeRoutes) ? activeRoutes : Object.entries(activeRoutes).map(([id, config]) => ({ ...config, id }));
+      // Endpoint, geography and the simulation flag are fixed by deployment; only name/model/enabled persist.
       this._applyRouteSettings(next, entries.map(config => {
-        const routeId = config.id ?? config.routeId;
-        if (!['azure', 'ollama'].includes(routeId)) return config;
-        const { baseUrl, ...retained } = config;
+        const { baseUrl, geography, simulated, kind, ...retained } = config;
         return retained;
       }));
     }
@@ -666,25 +585,6 @@ export class Governance {
         }
       }
     }
-    if (saved?.euRouting) {
-      const euRouting = this._clone(saved.euRouting);
-      if (Array.isArray(euRouting.order)) {
-        const retained = [...new Set(euRouting.order.filter(routeId => EU_POOL_ROUTE_IDS.includes(routeId)))];
-        euRouting.order = [...retained, ...EU_POOL_ROUTE_IDS.filter(routeId => !retained.includes(routeId))];
-      }
-      this._applyEuRoutingSettings(next, euRouting);
-    }
-    if (DEFAULT_AZURE_ENDPOINT) {
-      next.routes.azure.enabled = true;
-      next.routes.azure.model = process.env.AZURE_OPENAI_DEPLOYMENT || next.routes.azure.model;
-    }
-    if (process.env.PDA_OLLAMA_MODEL) next.routes.ollama.model = process.env.PDA_OLLAMA_MODEL;
-    if (process.env.PDA_PUBLIC_ROUTE || CLOUD_HOST) next.preferences.public = process.env.PDA_PUBLIC_ROUTE || 'azure';
-    if (CLOUD_HOST) next.routes.copilot.enabled = false;
-    for (const routeId of REMOTE_ROUTE_IDS) {
-      next.secrets.routeApiKeyPresent[routeId] = Boolean(this.store.secretPresent(this._routeSecretName(routeId)));
-    }
-    next.secrets.mistralApiKeyPresent = next.secrets.routeApiKeyPresent.mistral;
     this._validateSettings(next);
     this.store.save('settings', next);
     return next;
@@ -1299,9 +1199,9 @@ export class Governance {
     const levelDefinitions = this._createDefaultLevelDefinitions();
     const environmentDefinitions = this._createDefaultEnvironmentDefinitions();
     const allowedModels = {
-      Public: ['copilot', 'azure', 'mistral', 'simplellm', 'ollama'],
-      Internal: ['mistral', 'simplellm', 'ollama'],
-      'Highly Confidential': ['ollama'],
+      Public: ['global'],
+      Internal: ['eu'],
+      'Highly Confidential': ['onprem'],
     };
     const allowedTools = {
       Public: ['weather', 'public_send'],
@@ -1309,8 +1209,8 @@ export class Governance {
       'Highly Confidential': ['sales'],
     };
     const allowedEnvironments = {
-      Public: ['Public cloud', 'EU-only', 'On-premises'],
-      Internal: ['EU-only', 'On-premises'],
+      Public: ['Public cloud'],
+      Internal: ['EU-only'],
       'Highly Confidential': ['On-premises'],
     };
     return {
@@ -1580,73 +1480,32 @@ export class Governance {
   }
 
   _defaultSettings() {
+    const azureBase = DEFAULT_AZURE_ENDPOINT || 'https://azure-openai.invalid/openai/v1';
+    const enabled = Boolean(DEFAULT_AZURE_ENDPOINT);
+    // One Azure OpenAI account, three deployments. `model` is the deployment name; `geography` is
+    // the governed residency; `simulated` marks a residency the cloud host cannot truly satisfy.
+    const route = (id, name, model, geography, simulated) => ({
+      id, kind: 'azure', name, enabled, model, baseUrl: azureBase, geography, simulated, costScore: 0,
+    });
     return {
       routes: {
-        copilot: {
-          id: 'copilot',
-          kind: 'copilot',
-          name: 'GitHub Copilot',
-          enabled: !CLOUD_HOST,
-          model: 'gpt-5-mini',
-          baseUrl: DEFAULT_PUBLIC_ENDPOINT,
-          geography: 'Public cloud',
-          costScore: 0,
-        },
-        ollama: {
-          id: 'ollama',
-          kind: 'ollama',
-          name: 'Ollama',
-          enabled: true,
-          model: process.env.PDA_OLLAMA_MODEL || 'qwen2.5:7b',
-          baseUrl: DEFAULT_OLLAMA_ENDPOINT,
-          geography: CLOUD_HOST || !['127.0.0.1', 'localhost', '[::1]'].includes(new URL(DEFAULT_OLLAMA_ENDPOINT).hostname)
-            ? (process.env.PDA_OLLAMA_GEOGRAPHY === 'EU-only' ? 'EU-only' : 'Public cloud') : 'On-premises',
-          costScore: 0,
-        },
-        azure: {
-          id: 'azure',
-          kind: 'azure',
-          name: 'Azure OpenAI',
-          enabled: Boolean(DEFAULT_AZURE_ENDPOINT),
-          model: process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o-mini',
-          baseUrl: DEFAULT_AZURE_ENDPOINT || 'https://azure-openai.invalid/openai/v1',
-          geography: 'Public cloud',
-          costScore: 0,
-        },
-        mistral: {
-          id: 'mistral',
-          kind: 'mistral',
-          name: 'Mistral',
-          enabled: false,
-          model: 'mistral-small-latest',
-          baseUrl: DEFAULT_MISTRAL_ENDPOINT,
-          geography: 'EU-only',
-          costScore: 0,
-        },
-        simplellm: {
-          id: 'simplellm',
-          kind: 'simplellm',
-          name: 'SimpleLLM',
-          enabled: false,
-          model: 'Llama-3.1-8B-Instruct',
-          baseUrl: DEFAULT_SIMPLELLM_ENDPOINT,
-          geography: 'EU-only',
-          costScore: 0,
-        },
+        global: route('global', 'Global model', 'global', 'Public cloud', false),
+        eu: route('eu', 'EU model', 'eu', 'EU-only', false),
+        onprem: route('onprem', 'On-premises model', 'onprem', 'On-premises', true),
       },
       preferences: {
-        public: process.env.PDA_PUBLIC_ROUTE || (CLOUD_HOST ? 'azure' : 'copilot'),
-        internal: 'ollama',
-        high: 'ollama',
+        public: 'global',
+        internal: 'eu',
+        high: 'onprem',
       },
       euRouting: {
         strategy: 'cost',
-        fallbackEnabled: true,
-        order: ['simplellm'],
+        fallbackEnabled: false,
+        order: [],
       },
       secrets: {
         mistralApiKeyPresent: false,
-        routeApiKeyPresent: Object.fromEntries(REMOTE_ROUTE_IDS.map(routeId => [routeId, false])),
+        routeApiKeyPresent: {},
       },
     };
   }
@@ -1740,12 +1599,12 @@ export class Governance {
 
   _routeMatchesSovereignty(state, route, policyOrChat = state) {
     const policy = this._policyPayload(policyOrChat);
-    if (CLOUD_HOST && route.kind === 'copilot') return false;
-    if (this._baseLevelId(state.level, policy) !== 'Public' && route.kind === 'copilot') return false;
+    // An Italy-only restriction cannot be met by any route in this demo topology.
     if (Array.isArray(state.restrictions) && state.restrictions.includes('IT')) {
       return false;
     }
-    if (state.restrictions?.includes('DE') && route.kind !== 'ollama') return false;
+    // A Germany/on-prem restriction is satisfied only by the On-premises route.
+    if (state.restrictions?.includes('DE') && route.geography !== 'On-premises') return false;
     const sovereignty = this._baseEnvironmentId(state.sovereignty, policy);
     if (sovereignty === 'On-premises') {
       return route.geography === 'On-premises';
@@ -1783,6 +1642,7 @@ export class Governance {
       model: routeConfig.model,
       baseUrl: routeConfig.baseUrl,
       geography,
+      simulated: Boolean(routeConfig.simulated),
       enabled: Boolean(routeConfig.enabled),
       costScore: routeConfig.costScore,
     };
@@ -1790,7 +1650,7 @@ export class Governance {
 
   _routeForTool(tool, chat, excludedRouteIds = []) {
     const route = this.recommendRoute(chat, excludedRouteIds);
-    if (tool.sovereignty === 'On-premises' && route.kind !== 'ollama') {
+    if (tool.sovereignty === 'On-premises' && route.geography !== 'On-premises') {
       return { allowed: false, reason: 'ON_PREM_TOOL_REQUIRES_ON_PREM_ROUTE' };
     }
     if (tool.sovereignty === 'Public cloud' && this._baseEnvironmentId(chat.sovereignty, chat) !== 'Public cloud') {
@@ -1982,32 +1842,19 @@ export class Governance {
 
   _validateRouteEndpoint(routeId, baseUrl) {
     const value = String(baseUrl);
-    if (routeId === 'copilot' && value !== DEFAULT_PUBLIC_ENDPOINT) {
-      throw new Error('Copilot endpoint is fixed for the demo');
+    // Every route is an Azure OpenAI / AI Foundry deployment on the one approved account endpoint.
+    let url;
+    try {
+      url = new URL(value);
+    } catch {
+      throw new Error('Model endpoint must be a valid URL');
     }
-    if (routeId === 'ollama' && value !== DEFAULT_OLLAMA_ENDPOINT) {
-      throw new Error('Ollama endpoint must match the configured endpoint');
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.port
+      || url.pathname !== '/openai/v1' || (!url.hostname.endsWith('.openai.azure.com') && url.hostname !== 'azure-openai.invalid')) {
+      throw new Error('Model route requires an approved openai.azure.com HTTPS /openai/v1 endpoint.');
     }
-    if (routeId === 'azure') {
-      let url;
-      try {
-        url = new URL(value);
-      } catch {
-        throw new Error('Azure OpenAI endpoint must be a valid URL');
-      }
-      if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.port
-        || url.pathname !== '/openai/v1' || (!url.hostname.endsWith('.openai.azure.com') && url.hostname !== 'azure-openai.invalid')) {
-        throw new Error('Azure OpenAI requires an approved openai.azure.com HTTPS /openai/v1 endpoint.');
-      }
-      if (value !== (DEFAULT_AZURE_ENDPOINT || 'https://azure-openai.invalid/openai/v1')) {
-        throw new Error('Azure OpenAI endpoint must match the configured endpoint');
-      }
-    }
-    if (routeId === 'mistral' && value !== DEFAULT_MISTRAL_ENDPOINT) {
-      throw new Error('Mistral endpoint must remain the declared demo endpoint');
-    }
-    if (routeId === 'simplellm' && value !== DEFAULT_SIMPLELLM_ENDPOINT) {
-      throw new Error('SimpleLLM endpoint must remain the declared demo endpoint');
+    if (value !== (DEFAULT_AZURE_ENDPOINT || 'https://azure-openai.invalid/openai/v1')) {
+      throw new Error('Model endpoint must match the configured Azure OpenAI endpoint');
     }
   }
 

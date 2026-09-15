@@ -8,12 +8,7 @@ const SDK_VERSION = '1.0.13';
 const TURN_MS = 240_000;
 const TOOL_IDS = ['weather', 'sales', 'public_send'];
 const dependencies = process.env.PDA_DEPENDENCIES || path.join(process.env.LOCALAPPDATA || os.homedir(), 'PDA', 'sdk-demo', 'dependencies');
-const OLLAMA_BASE = process.env.PDA_OLLAMA_BASE || 'http://127.0.0.1:11434/v1';
-const OLLAMA_TAGS_URL = `${OLLAMA_BASE.replace(/\/v1\/?$/, '')}/api/tags`;
 const INTERNAL_BASE = process.env.PDA_INTERNAL_BASE || `http://127.0.0.1:${process.env.PORT || process.env.PDA_PORT || 8110}`;
-// Copilot CLI credential home. USERPROFILE is undefined on Linux; fall back gracefully.
-const copilotHome = () => process.env.PDA_COPILOT_HOME
-  || (process.env.USERPROFILE ? path.join(process.env.USERPROFILE, '.copilot') : path.join(process.env.HOME || process.cwd(), '.copilot'));
 const failure = (code, message) => Object.assign(new Error(message), { code });
 const bounded = async (response, limit = 2 * 1024 * 1024) => {
   let size = 0; const chunks = [];
@@ -49,13 +44,12 @@ export class AgentRunner {
       sovereignty: chat.sovereignty, policyVersion: chat.policyVersion, policyDigest: chat.policyDigest, ...data });
   }
   async clientFor(route) {
-    if (process.env.PDA_ALLOW_REMOTE === '1' && route.kind === 'copilot') throw failure('cloud_copilot_disabled', 'Use Azure OpenAI for the cloud Public route.');
     const { CopilotClient } = await this.loadSdk();
     const env = { ...process.env, COPILOT_TELEMETRY_ENABLED: 'false', DO_NOT_TRACK: '1' };
     for (const key of Object.keys(env)) if (/MISTRAL|SIMPLELLM|PDA_OPERATOR|AZURE.*KEY|OPENAI.*KEY/i.test(key)) delete env[key];
     const client = new CopilotClient({ mode: 'empty', workingDirectory: this.work,
-      useLoggedInUser: route.kind === 'copilot',
-      baseDirectory: route.kind === 'copilot' ? copilotHome() : path.join(this.store.root, 'byok-runtime'),
+      useLoggedInUser: false,
+      baseDirectory: path.join(this.store.root, 'byok-runtime'),
       logLevel: 'error', env });
     let timer;
     try {
@@ -105,26 +99,12 @@ export class AgentRunner {
     const route = this.governance.settings().routes[id];
     if (!route) throw failure('unknown_route', 'Unknown model route.');
     try {
-      let models;
-      if (id === 'copilot') {
-        const client = await this.clientFor(route);
-        try {
-          const auth = await client.getAuthStatus();
-          if (!auth.isAuthenticated) throw failure('copilot_sign_in_required', 'Sign in to GitHub Copilot CLI before using this route.');
-          models = (await client.listModels()).map(m => ({ id: m.id, name: m.name }));
-        } finally { await client.forceStop(); }
-      } else {
-        if (this.requiresStaticKey(route) && !this.providerKey(route)) throw failure('provider_key_required', `Enter the ${route.name} API key in Admin first.`);
-        const url = id === 'ollama' ? OLLAMA_TAGS_URL : route.baseUrl + '/models';
-        const response = await fetch(url, { headers: await this.authHeaderFor(route), redirect: 'error', signal: AbortSignal.timeout(15000) });
-        if (!response.ok) throw failure('provider_probe_failed', `Provider rejected model discovery (${response.status}).`);
-        const body = JSON.parse(await bounded(response));
-        models = id === 'ollama' ? body.models.map(m => ({ id: m.name })) : body.data.map(m => ({ id: m.id }));
-      }
-      // Azure lists models, not deployment names, so discovery cannot confirm the configured deployment.
-      if (id === 'azure') return this.readiness[id] = { ok: true, message: 'Azure OpenAI accepted the managed-identity listing request. The configured deployment name and inference are unverified until a governed turn runs.', models, checkedAt: new Date().toISOString() };
-      const known = models.some(m => m.id === route.model);
-      return this.readiness[id] = { ok: known, message: known ? 'Configured model discovered. Inference has not been tested by this check.' : 'Configured model not in the discovered list.', models, checkedAt: new Date().toISOString() };
+      const response = await fetch(route.baseUrl + '/models', { headers: await this.authHeaderFor(route), redirect: 'error', signal: AbortSignal.timeout(15000) });
+      if (!response.ok) throw failure('provider_probe_failed', `Provider rejected model discovery (${response.status}).`);
+      const body = JSON.parse(await bounded(response));
+      const models = (body.data || []).map(m => ({ id: m.id }));
+      // Azure lists base models, not deployment names, so discovery cannot confirm the configured deployment.
+      return this.readiness[id] = { ok: true, message: 'Azure OpenAI accepted the managed-identity listing request. The configured deployment name and inference are unverified until a governed turn runs.', models, checkedAt: new Date().toISOString() };
     } catch (error) { return this.readiness[id] = { ok: false, message: this.safeError(error), code: error.code || 'probe_failed', checkedAt: new Date().toISOString() }; }
   }
   safeError(error) {
@@ -154,6 +134,7 @@ export class AgentRunner {
         if (!acceptance.ok) throw failure('credential_invalid', acceptance.reason);
         this.event('model-authorized', chat, { routeId: run.route.id, model: run.route.model, credential: acceptance.record,
           sdkVersion: SDK_VERSION, routingStrategy: routePlan.strategy, fallbackEnabled: routePlan.fallbackEnabled,
+          geography: run.route.geography, simulated: run.route.simulated,
           costScore: run.route.costScore, skippedRoutes: routePlan.skipped });
         run.client = await this.clientFor(run.route);
         const sdk = await this.loadSdk();
@@ -280,6 +261,7 @@ export class AgentRunner {
         if (!acceptance.ok) throw failure('credential_invalid', acceptance.reason);
         this.event('model-egress-authorized', run.chat, { routeId: route.id, model: route.model,
           requestDigest: crypto.createHash('sha256').update(serialized).digest('hex'), credential: acceptance.record,
+          geography: route.geography, simulated: route.simulated,
           routingStrategy: routePlan.strategy, routeAttempt: index + 1, costScore: route.costScore });
         if (this.requiresStaticKey(route) && !this.providerKey(route)) throw failure('provider_key_required', `${route.name} key is missing.`);
         const headers = { 'Content-Type': 'application/json', ...(await this.authHeaderFor(route)) };
@@ -337,6 +319,7 @@ export class AgentRunner {
         if (!run.live) throw failure('turn_ended', 'Turn ended before model release.');
         this.readiness[route.id] = { ok: true, message: 'Last governed model request completed.', checkedAt: new Date().toISOString() };
         this.event('model-egress-complete', run.chat, { routeId: route.id, model: route.model, outcome: 'allowed',
+          geography: route.geography, simulated: route.simulated,
           routeAttempt: index + 1, fallbackUsed: run.failedRouteIds.length > 0 });
         reply(200, text);
         return;

@@ -86,13 +86,8 @@ function Get-PdaConfig {
         TokenStoreAccountName = $tokenStoreAccountName
         ImageRepository     = Get-OptionalEnv 'PDA_IMAGE_REPOSITORY' 'pda/web'
         ImageTag            = Get-OptionalEnv 'PDA_IMAGE_TAG' (Get-OptionalEnv 'GITHUB_SHA' 'local')
-        OllamaUseGpu        = Get-OptionalEnv 'PDA_OLLAMA_USE_GPU' 'false'
-        OllamaModel         = Get-OptionalEnv 'PDA_OLLAMA_MODEL' 'llama3.1'
-        OllamaGpuProfileType = Get-OptionalEnv 'PDA_OLLAMA_GPU_PROFILE' 'Consumption-GPU-NC8as-T4'
-        OllamaCpuProfileType = Get-OptionalEnv 'PDA_OLLAMA_CPU_PROFILE' 'Consumption'
-        DeployAzureOpenAI   = Get-OptionalEnv 'PDA_DEPLOY_AZURE_OPENAI' 'false'
+        DeployAzureOpenAI   = Get-OptionalEnv 'PDA_DEPLOY_AZURE_OPENAI' 'true'
         AzureOpenAiEndpoint = Get-OptionalEnv 'PDA_AZURE_OPENAI_ENDPOINT' ''
-        AzureOpenAiDeployment = Get-OptionalEnv 'PDA_AZURE_OPENAI_DEPLOYMENT' 'gpt-4.1-mini'
         AzureOpenAiModel    = Get-OptionalEnv 'PDA_AZURE_OPENAI_MODEL' 'gpt-4.1-mini'
         DeployerPrincipalId = Get-OptionalEnv 'DEPLOYER_PRINCIPAL_ID' ''
         RepoRoot            = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path

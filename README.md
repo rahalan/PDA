@@ -11,7 +11,7 @@ The approved story has a local demo using the published **GitHub Copilot SDK 1.0
 ## Run the live demo
 
 - **User chat:** <http://127.0.0.1:8110/> — a confidentiality selector, prompt box and conversation, with visible protection state.
-- **Administrator:** <http://127.0.0.1:8110/admin> — policy drafts and publication, model preferences, EU provider routing and encrypted key entry, tool allowances and demo credential revocation.
+- **Administrator:** <http://127.0.0.1:8110/admin> — policy drafts and publication, model preferences across the three managed-identity routes, tool allowances and demo credential revocation.
 - **Compliance:** <http://127.0.0.1:8110/compliance> — actual signed events, chat timelines, filters, verification and export.
 
 The backend is Node.js with plain HTML/CSS/JavaScript pages. No container or frontend build is required. Model answers come from the real SDK; weather and sales are fictional local services, and sending is dry-run only. Keys are encrypted for the current Windows user, outside the repository.
@@ -22,14 +22,16 @@ See [model configuration and walkthrough](docs/DEMO.md). The signed ledger is ta
 
 An optional Azure deployment hosts the app on Azure Container Apps with Key Vault–backed
 at-rest encryption for secrets/signing keys (replacing Windows DPAPI), an unused archive container, and an
-Ollama route that runs CPU-only by default with an optional serverless GPU — provisioned with Bicep and Azure Verified Modules,
-and shipped by GitHub Actions that call PowerShell scripts in [scripts/](scripts). The
-local demo above is unaffected; cloud behavior is enabled only through environment
-variables.
+Azure OpenAI (AI Foundry) account with three `gpt-4.1-mini` deployments (`global`, `eu`, `onprem`) served by the app's
+managed identity — provisioned with Bicep and Azure Verified Modules,
+and shipped by GitHub Actions that call PowerShell scripts in [scripts/](scripts).
+Cloud behavior is enabled only through environment variables.
 
-Cloud mode requires Entra sign-in and application roles. Azure-hosted Ollama cannot
-satisfy on-premises requirements. Use synthetic data only. The archive has no uploader
-or locked policy; compilation and source tests are not deployment proof.
+Cloud mode requires Entra sign-in and application roles. The `global` route is public
+cloud and the `eu` route runs in an EU region (genuine EU residency); the `onprem`
+route is a **simulated** on-premises deployment (a cloud region is not on-premises)
+and is labelled as such in the UI and ledger. Use synthetic data only. The archive has
+no uploader or locked policy; compilation and source tests are not deployment proof.
 
 - [Azure architecture](docs/azure-architecture.md)
 - [Azure deployment guide](docs/azure-deployment-guide.md)
